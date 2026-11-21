@@ -52,7 +52,8 @@ Before the first edit, tell the user in a few lines:
 - anything the request could be read to include that you are leaving out
 
 **Size budget**: 150 changed source lines or 6 files, unless the conventions file sets
-another number. If your estimate is over, stop and propose how to split the work into
+another number. The budget counts source files and lines; tests are limited separately,
+below. If your estimate is over, stop and propose how to split the work into
 changes that each stand on their own, and let the user choose. A reviewer handles two
 small changes far better than one large one.
 
@@ -63,6 +64,12 @@ work without it? If yes, leave it out. That rules out renames, reordering, added
 hints, reformatting, import sorting, and fixing things you noticed nearby. Collect those
 in a short "noticed, not changed" list for the user instead; they are real, but they
 belong in their own change.
+
+One thing is not a drive-by: a code path that worked before and breaks once your feature
+is switched on. Your change created that failure, so its fix is part of the feature,
+even when it is a one-line guard in a function you were not otherwise touching. Before
+you finish, look for the places that use whatever your feature removes or makes
+optional. A defect that was already there with the feature off stays on the list.
 
 **Follow the plumbing that exists.** Do not introduce a new abstraction, base class,
 registry or config mechanism for a single use.
@@ -80,7 +87,7 @@ hooks for future use.
 
 **No side artifacts.** No benchmark or validation scripts, no new documentation files,
 no README sections, unless the user asks. If you need a throwaway script to check your
-work, keep it out of the repository.
+work, keep it out of the repository, and delete it afterwards or say where it is.
 
 **Leave formatting alone.** Format the lines you wrote to match their neighbours. Do not
 run a formatter or pre-commit over whole files: it rewrites lines the reviewer then has
@@ -115,6 +122,11 @@ offsets, masking, ordering. There, write one test, about 30 lines, that compares
 result with a value worked out by hand or produced by an independent reference (a
 library function, a slow obvious implementation that already exists). Do not derive the
 expected value with the same formula as the code. Reuse existing fixtures and helpers.
+
+Wiring is not in that category. A change that only passes an existing value to an
+existing function (a new option reaching the model, a different input reaching an
+existing loss) needs no test: there is no independent value to compare against, and
+running the feature once shows whether it is connected.
 
 Never write tests for: default values, argument parsing, help text, error message
 wording, that a removed argument stays removed, that a mock received certain keyword
