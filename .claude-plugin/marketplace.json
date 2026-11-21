@@ -1,0 +1,17 @@
+{
+  "name": "cehr-plugins",
+  "owner": {
+    "name": "Chao Pang"
+  },
+  "metadata": {
+    "description": "Plugins for day-to-day development workflow with Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "cehr-dev",
+      "description": "Skills for day-to-day development: a read-only audit of git branches and worktrees, and feature implementation as a small reviewable diff.",
+      "source": "./plugins/cehr-dev",
+      "category": "development"
+    }
+  ]
+}
