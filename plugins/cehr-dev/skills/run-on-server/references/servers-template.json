@@ -1,11 +1,11 @@
 {
-  "read_names": ["*.log", "trainer_state.json", "*_metrics.json", "all_results.json", "train_results.json", "eval_results.json"],
+  "read_names": ["*.log", "trainer_state.json", "metrics.json", "*_metrics.json", "all_results.json", "train_results.json", "eval_results.json"],
   "servers": {
     "<ssh alias>": {
       "repo": "/absolute/path/to/the/repository",
       "log_dir": "/absolute/path/where/job/logs/go",
       "read_roots": ["/absolute/path/where/job/logs/go", "/absolute/path/to/experiment/outputs"],
-      "deny_parts": ["dataset_prepared", "patient_sequence", "*prediction*", "*cohort*"],
+      "deny_parts": ["dataset_prepared", "patient_sequence"],
       "run": ["python -m cehrgpt.", "python -u -m cehrgpt.", "bash scripts/"],
       "env": ["CUDA_VISIBLE_DEVICES", "HF_HOME", "PYTHONPATH"],
       "setup": "source .venv/bin/activate",

@@ -6,8 +6,9 @@ description: Run whitelisted commands on the user's remote servers over ssh - ch
 # Run commands on a server that holds patient data
 
 The servers hold patient-level records. You may run approved commands there and read
-training logs and metrics. You may never read the data: not a row, not a sample, not a
-count computed from it.
+training logs and metrics. You may never read the data yourself: not a row, not a
+sample. A listed script may compute on it and write summary metrics, and those you may
+read.
 
 This text is not what enforces that. `scripts/remote.py` refuses anything outside the
 user's list, a hook blocks direct ssh to a listed server, and a job's output goes to a
@@ -59,8 +60,10 @@ the user's audit file, `~/.config/cehr-dev/audit.jsonl`. Do not edit or remove i
 looks like patient records or identifiers, stop reading, do not quote it, and tell the
 user which file.
 
-**Analysis that needs the data is the user's to run.** For a count, a distribution or
-anything per patient, say which number you need and ask the user to compute it.
+**Compute through listed scripts only.** A listed script may work on a data folder and
+write summary metrics such as a loss or an AUC, which you may read. What no listed
+script produces, such as an ad hoc count or anything per patient, is the user's to run:
+say which number you need.
 
 **Keep server details out of repositories.** Host names, addresses and server paths do
 not go into commits, pull requests or tracked files.

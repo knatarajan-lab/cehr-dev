@@ -12,7 +12,7 @@ and fill it in. The file stays on your machine; it is not part of any repository
 | `repo` | The repository folder on the server. Jobs start there; `git` runs there. |
 | `log_dir` | Where a started job writes `<name>.log`. Must be inside a `read_roots` folder. |
 | `read_roots` | Folders whose logs and metrics may be read. Absolute paths. |
-| `deny_parts` | Folder or file name patterns that are never entered, even inside `read_roots`. |
+| `deny_parts` | Names of folders that hold nothing but data and are never entered for reading. Keep it short: a results folder that also holds a metrics file should stay readable, since data files in it are refused by type anyway. It does not limit which folders a job may work on. |
 | `run` | A job's command must start with one of these. |
 | `env` | Variables that `start --env` may set. |
 | `setup` | Run before every job, for example to activate the environment. |
