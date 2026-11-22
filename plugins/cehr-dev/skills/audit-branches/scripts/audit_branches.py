@@ -215,55 +215,53 @@ def contained_in(name, sha, remote):
     return [r for r in out.split() if r not in own][:4]
 
 
-def classify(b, gold, devs, prs_known, remote, raw_prs, merged_by_head):
-    """Decide the category of one branch and say why. Mutates and returns b."""
+def by_history(b, gold, devs, raw_prs, merged_by_head):
+    """Category from ancestry and pull-request state: (category, reason, covered by), or None."""
     sha = b["sha"]
     merged = [p for p in b["prs"] if p["state"] == "MERGED"]
     open_prs = [p for p in b["prs"] if p["state"] == "OPEN"]
-    closed = [p for p in b["prs"] if p["state"] == "CLOSED"]
-
-    def done(category, reason, covered_by=None):
-        b.update(category=category, reason=reason, covered_by=covered_by)
-        return b
-
     if b["is_reference"]:
-        return done("reference", "the gold or a development branch itself")
+        return "reference", "the gold or a development branch itself", None
     if is_ancestor(sha, gold.ref):
-        return done("in-main", f"tip is already on {gold.ref} (no commits of its own)", gold.ref)
+        return "in-main", f"tip is already on {gold.ref} (no commits of its own)", gold.ref
     for p in merged:
         if p["tip_in_head"] and p["merge_in_gold"]:
-            return done("in-main", f"PR #{p['number']} merged; its merge commit is on {gold.ref}", gold.ref)
+            return "in-main", f"PR #{p['number']} merged; its merge commit is on {gold.ref}", gold.ref
     if open_prs:
-        p = open_prs[0]
-        return done("open-pr", f"PR #{p['number']} is open against {p['base']}")
+        return "open-pr", f"PR #{open_prs[0]['number']} is open against {open_prs[0]['base']}", None
     for d in devs:
         if is_ancestor(sha, d.ref):
-            return done("in-dev", f"tip is already on {d.ref}", d.ref)
+            return "in-dev", f"tip is already on {d.ref}", d.ref
     for p in merged:
         for d in devs:
             if p["tip_in_head"] and d.ref in p["merge_in_dev"]:
-                return done("in-dev", f"PR #{p['number']} merged; its merge commit is on {d.ref}", d.ref)
+                return "in-dev", f"PR #{p['number']} merged; its merge commit is on {d.ref}", d.ref
     for p in merged:
-        if not p["tip_in_head"]:
-            continue
-        hit = follow_chain(raw_prs[p["number"]], gold, devs, merged_by_head)
+        hit = p["tip_in_head"] and follow_chain(raw_prs[p["number"]], gold, devs, merged_by_head)
         if hit:
             via = " -> ".join(f"#{n}" for n in hit[1])
-            cat = "in-main" if hit[0] == gold.ref else "in-dev"
-            return done(cat, f"PR #{p['number']} merged into {p['base']}, which was merged later via {via} "
-                             f"and reached {hit[0]} (inferred from the chain of pull requests)", hit[0])
+            return ("in-main" if hit[0] == gold.ref else "in-dev",
+                    f"PR #{p['number']} merged into {p['base']}, which was merged later via {via} "
+                    f"and reached {hit[0]} (inferred from the chain of pull requests)", hit[0])
+    return None
 
-    # Not settled by ancestry or pull-request state: look at the content.
+
+def by_content(b, gold, devs, prs_known, remote):
+    """Category from what the branch holds, for one that history did not settle."""
+    sha = b["sha"]
+    merged = [p for p in b["prs"] if p["state"] == "MERGED"]
     notes = []
     for p in merged:
         if p["tip_in_head"] is False:
             notes.append(f"has commits made after PR #{p['number']} merged")
         elif p["tip_in_head"] is None:
             notes.append(f"PR #{p['number']} merged but its head commit is not fetched")
-    for p in closed:
-        twin = p.get("twin")
-        notes.append(f"PR #{p['number']} was closed without merging"
-                     + (f" (same title as merged PR #{twin})" if twin else ""))
+    for p in b["prs"]:
+        if p["state"] == "CLOSED":
+            twin = p.get("twin")
+            notes.append(f"PR #{p['number']} was closed without merging"
+                         + (f" (same title as merged PR #{twin})" if twin else ""))
+    noted = "; " + "; ".join(notes) if notes else ""
     b["content"] = {}
     for t in [gold] + devs:
         _, cherry = git("cherry", t.ref, sha)
@@ -272,24 +270,28 @@ def classify(b, gold, devs, prs_known, remote, raw_prs, merged_by_head):
         b["content"][t.ref] = e
         if e["trial_merge"] == "no-op" or (marks and marks.count("-") == len(marks)):
             how = "a trial merge changes nothing" if e["trial_merge"] == "no-op" else "every commit has an equivalent patch"
-            cat = "in-main" if t is gold else "in-dev"
-            return done(cat, f"content is in {t.ref}: {how}" + ("; " + "; ".join(notes) if notes else ""), t.ref)
+            return "in-main" if t is gold else "in-dev", f"content is in {t.ref}: {how}" + noted, t.ref
     targets = gold.ref + (" or a development branch" if devs else "")
     for p in merged:
         if p["tip_in_head"]:
-            return done("in-another-branch",
-                        f"PR #{p['number']} merged into {p['base']}, but that merge is not on {targets} "
-                        f"({p['base']} is not merged yet, or its history was rewritten)")
+            return ("in-another-branch", f"PR #{p['number']} merged into {p['base']}, but that merge is not on {targets} "
+                    f"({p['base']} is not merged yet, or its history was rewritten)", None)
     others = contained_in(b["name"], sha, remote)
     if others:
         b["contained_in"] = others
-        return done("in-another-branch",
-                    f"every commit is also on {', '.join(others)}, which is not on {targets}"
-                    + ("; " + "; ".join(notes) if notes else ""))
+        return "in-another-branch", f"every commit is also on {', '.join(others)}, which is not on {targets}" + noted, None
     where = "local only: these commits are on no remote" if b["local_only"] else "pushed"
     if not prs_known:
         notes.append("pull-request state unknown (gh unavailable)")
-    return done("not-covered", where + ("; " + "; ".join(notes) if notes else ""))
+    return "not-covered", where + ("; " + "; ".join(notes) if notes else ""), None
+
+
+def classify(b, gold, devs, prs_known, remote, raw_prs, merged_by_head):
+    """Decide the category of one branch and say why. Mutates and returns b."""
+    category, reason, covered_by = (by_history(b, gold, devs, raw_prs, merged_by_head)
+                                    or by_content(b, gold, devs, prs_known, remote))
+    b.update(category=category, reason=reason, covered_by=covered_by)
+    return b
 
 
 def stale_reason(b, heads, remote, stale_days, proposed):
@@ -321,8 +323,18 @@ def stale_reason(b, heads, remote, stale_days, proposed):
     return None
 
 
-def main():
-    global REPO
+ORDER = ["in-main", "in-dev", "open-pr", "in-another-branch", "not-covered", "reference"]
+TITLES = {
+    "in-main": "IN MAIN: work is in {gold}",
+    "in-dev": "IN A DEVELOPMENT BRANCH ONLY: not in main yet",
+    "open-pr": "OPEN PULL REQUEST: still in progress",
+    "in-another-branch": "IN ANOTHER BRANCH ONLY: the work lives on in a branch that is not in main or a development branch",
+    "not-covered": "NOT COVERED: work that is in neither main nor a development branch",
+    "reference": "REFERENCE BRANCHES",
+}
+
+
+def parse_args():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", default=".", help="path inside the repository (default: current directory)")
     ap.add_argument("--remote", default="origin")
@@ -332,15 +344,12 @@ def main():
     ap.add_argument("--json", dest="json_path", help="also write the full result as JSON to this file")
     ap.add_argument("--stale-days", type=int, default=90,
                     help="an unmerged branch this old whose tip is on the remote is not needed locally")
-    args = ap.parse_args()
+    return ap.parse_args()
 
-    top = subprocess.run(["git", "-C", args.repo, "rev-parse", "--show-toplevel"],
-                         capture_output=True, text=True)
-    if top.returncode:
-        sys.exit(f"{args.repo} is not inside a git repository")
-    REPO = top.stdout.strip()
+
+def targets(args):
+    """The gold and development refs to compare against, and warnings about them."""
     remote = args.remote
-
     gold = Target(resolve_gold(remote, args.gold))
     devs, warnings = [], []
     for name in args.dev:
@@ -349,16 +358,34 @@ def main():
             warnings.append(f"development branch '{name}' not found; ignored")
         elif ref != gold.ref and ref not in [d.ref for d in devs]:
             devs.append(Target(ref))
-    reference_names = {short(t.ref, remote) for t in [gold] + devs}
     for t in [gold] + devs:
         local = short(t.ref, remote)
         if t.ref != local and exists(local):
             ahead = count(local, "--not", t.ref)
             if ahead:
                 warnings.append(f"local {local} has {ahead} commit(s) that {t.ref} does not; they are not counted as covered")
+    return gold, devs, warnings
 
-    prs = load_prs()
-    heads = remote_heads(remote)
+
+def pr_entries(name, sha, prs, gold, devs, merged_titles):
+    """The pull requests whose head is this branch, with where each one ended up."""
+    entries = []
+    for p in prs or []:
+        if p["headRefName"] != name or p.get("isCrossRepository"):
+            continue
+        head, merge = p.get("headRefOid"), (p.get("mergeCommit") or {}).get("oid")
+        entry = {"number": p["number"], "state": p["state"], "base": p["baseRefName"],
+                 "tip_in_head": is_ancestor(sha, head) if have_object(head) else None,
+                 "merge_in_gold": have_object(merge) and is_ancestor(merge, gold.ref),
+                 "merge_in_dev": [d.ref for d in devs if have_object(merge) and is_ancestor(merge, d.ref)]}
+        if p["state"] == "CLOSED":
+            entry["twin"] = merged_titles.get(p["title"].strip().lower())
+        entries.append(entry)
+    return entries
+
+
+def read_branches(gold, devs, prs, heads, trees, reference_names, remote):
+    """Every local branch with its pull requests, flags and category."""
     merged_titles, raw_prs, merged_by_head = {}, {}, collections.defaultdict(list)
     for p in prs or []:
         raw_prs[p["number"]] = p
@@ -366,10 +393,7 @@ def main():
             merged_titles.setdefault(p["title"].strip().lower(), p["number"])
             if not p.get("isCrossRepository"):
                 merged_by_head[p["headRefName"]].append(p)
-
-    trees = worktrees()
     tree_of_branch = {w["branch"]: w for w in trees if w["branch"]}
-
     fmt = "%(refname:short)%09%(objectname)%09%(committerdate:short)%09%(upstream:short)%09%(contents:subject)"
     _, rows = git("for-each-ref", "--sort=-committerdate", "refs/heads", f"--format={fmt}")
     branches = []
@@ -380,17 +404,7 @@ def main():
         b["local_only"] = count(sha, "--not", "--remotes")
         b["on_remote"] = None if heads is None else name in heads
         b["own_commits_vs_gold"] = count("--no-merges", sha, "--not", gold.ref)
-        for p in prs or []:
-            if p["headRefName"] != name or p.get("isCrossRepository"):
-                continue
-            head, merge = p.get("headRefOid"), (p.get("mergeCommit") or {}).get("oid")
-            entry = {"number": p["number"], "state": p["state"], "base": p["baseRefName"],
-                     "tip_in_head": is_ancestor(sha, head) if have_object(head) else None,
-                     "merge_in_gold": have_object(merge) and is_ancestor(merge, gold.ref),
-                     "merge_in_dev": [d.ref for d in devs if have_object(merge) and is_ancestor(merge, d.ref)]}
-            if p["state"] == "CLOSED":
-                entry["twin"] = merged_titles.get(p["title"].strip().lower())
-            b["prs"].append(entry)
+        b["prs"] = pr_entries(name, sha, prs, gold, devs, merged_titles)
         w = tree_of_branch.get(name)
         if w:
             b["worktree"] = w["path"]
@@ -402,76 +416,55 @@ def main():
                 b["flags"].append(f"UNCOMMITTED WORK in its worktree ({w['modified']} modified, {w['untracked']} untracked)")
         if b["local_only"]:
             b["flags"].append(f"{b['local_only']} commit(s) on no remote")
-        classify(b, gold, devs, prs is not None, remote, raw_prs, merged_by_head)
-        branches.append(b)
-    proposed = {b["name"] for b in branches if b["category"] in ("in-main", "in-dev")}
-    for b in branches:
-        b["stale"] = stale_reason(b, heads, remote, args.stale_days, proposed)
-        if b["stale"]:
-            proposed.add(b["name"])
+        branches.append(classify(b, gold, devs, prs is not None, remote, raw_prs, merged_by_head))
+    return branches
 
-    _, stash_out = git("stash", "list", "--format=%gd%x09%gs")
-    stashes = [line.split("\t", 1) for line in stash_out.splitlines() if line]
 
+def candidate_dev_branches(prs, reference_names, remote):
+    """Branches that pull requests target instead of main, most used first."""
     candidates = collections.Counter()
     for p in prs or []:
         if p["baseRefName"] not in reference_names and not p.get("isCrossRepository"):
             candidates[p["baseRefName"]] += 1
-    candidate_rows = []
+    rows = []
     for name, n in candidates.most_common(6):
         open_to_gold = [q["number"] for q in prs if q["headRefName"] == name and q["state"] == "OPEN"]
-        candidate_rows.append({"branch": name, "prs_targeting_it": n, "exists": bool(resolve_ref(name, remote)),
-                               "its_own_open_pr": open_to_gold[0] if open_to_gold else None})
+        rows.append({"branch": name, "prs_targeting_it": n, "exists": bool(resolve_ref(name, remote)),
+                     "its_own_open_pr": open_to_gold[0] if open_to_gold else None})
+    return rows
 
+
+def last_fetch_time():
     fetch_head = os.path.join(git("rev-parse", "--git-common-dir")[1].strip() or ".git", "FETCH_HEAD")
     if not os.path.isabs(fetch_head):
         fetch_head = os.path.join(REPO, fetch_head)
-    last_fetch = (time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(fetch_head)))
-                  if os.path.exists(fetch_head) else "never")
+    if not os.path.exists(fetch_head):
+        return "never"
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(fetch_head)))
 
-    order = ["in-main", "in-dev", "open-pr", "in-another-branch", "not-covered", "reference"]
-    groups = {k: [b for b in branches if b["category"] == k] for k in order}
-    summary = {k: len(v) for k, v in groups.items()}
-    summary["total"] = len(branches)
-    summary["not_covered_local_only"] = sum(1 for b in groups["not-covered"] if b["local_only"])
-    summary["with_uncommitted_work"] = sum(1 for b in branches if any("UNCOMMITTED" in f for f in b["flags"]))
-    summary["not_merged_but_not_needed_locally"] = sum(1 for b in branches if b["stale"])
 
-    result = {"repo": REPO, "gold": gold.ref, "dev": [d.ref for d in devs], "pr_data": prs is not None,
-              "remote_checked": heads is not None, "last_fetch": last_fetch, "warnings": warnings,
-              "summary": summary, "branches": branches, "worktrees": trees,
-              "stashes": stashes, "candidate_dev_branches": candidate_rows}
-    if args.json_path:
-        with open(args.json_path, "w") as f:
-            json.dump(result, f, indent=1)
-
-    titles = {
-        "in-main": f"IN MAIN: work is in {gold.ref}",
-        "in-dev": "IN A DEVELOPMENT BRANCH ONLY: not in main yet",
-        "open-pr": "OPEN PULL REQUEST: still in progress",
-        "in-another-branch": "IN ANOTHER BRANCH ONLY: the work lives on in a branch that is not in main or a development branch",
-        "not-covered": "NOT COVERED: work that is in neither main nor a development branch",
-        "reference": "REFERENCE BRANCHES",
-    }
-    print(f"BRANCH AUDIT  {REPO}")
-    print(f"gold standard: {gold.ref}   development: {', '.join(d.ref for d in devs) or '(none given)'}")
-    print(f"pull-request data: {'yes, ' + str(len(prs)) + ' PRs' if prs is not None else 'NO (gh unavailable)'}"
-          f"   remote branch list: {'checked' if heads is not None else 'not checked'}   last fetch: {last_fetch}")
-    for w in warnings:
+def print_branches(result, pr_count):
+    """The header, the summary counts, and every branch under its category."""
+    summary, branches = result["summary"], result["branches"]
+    print(f"BRANCH AUDIT  {result['repo']}")
+    print(f"gold standard: {result['gold']}   development: {', '.join(result['dev']) or '(none given)'}")
+    print(f"pull-request data: {'yes, ' + str(pr_count) + ' PRs' if result['pr_data'] else 'NO (gh unavailable)'}"
+          f"   remote branch list: {'checked' if result['remote_checked'] else 'not checked'}   last fetch: {result['last_fetch']}")
+    for w in result["warnings"]:
         print(f"WARNING: {w}")
     print("\nSUMMARY (use these counts; do not recount by hand)")
     print(f"  local branches: {summary['total']}")
-    for k in order:
+    for k in ORDER:
         extra = f" (of which local only: {summary['not_covered_local_only']})" if k == "not-covered" else ""
         print(f"  {k}: {summary[k]}{extra}")
     print(f"  branches with uncommitted work in a worktree: {summary['with_uncommitted_work']}")
     print(f"  not merged but not needed locally: {summary['not_merged_but_not_needed_locally']}")
-
-    for k in order:
-        if not groups[k]:
+    for k in ORDER:
+        group = [b for b in branches if b["category"] == k]
+        if not group:
             continue
-        print(f"\n== {titles[k]} ({len(groups[k])})")
-        for b in groups[k]:
+        print(f"\n== {TITLES[k].format(gold=result['gold'])} ({len(group)})")
+        for b in group:
             print(f"  {b['name']}  [{b['date']}]  {b['reason']}")
             for f in b["flags"]:
                 print(f"      ! {f}")
@@ -480,11 +473,15 @@ def main():
             if b.get("worktree") and not any("main working folder" in f for f in b["flags"]):
                 print(f"      worktree: {b['worktree']}")
             if k == "not-covered":
-                print(f"      own commits vs {gold.ref}: {b['own_commits_vs_gold']}; "
+                print(f"      own commits vs {result['gold']}: {b['own_commits_vs_gold']}; "
                       f"still on remote: {b['on_remote'] if b['on_remote'] is not None else 'unknown'}")
                 for ref, e in b.get("content", {}).items():
                     print(f"      vs {ref}: trial merge {e['trial_merge']}; equivalent patches {e['patch_equivalent']}")
 
+
+def print_worktrees(result):
+    """The worktrees, the stashes and the candidate development branches."""
+    trees, stashes = result["worktrees"], result["stashes"]
     print(f"\n== WORKTREES ({len(trees)})")
     for w in trees:
         what = w["branch"] or ("detached at " + w.get("head", "?")[:8])
@@ -505,20 +502,56 @@ def main():
             extra.append(f"{w['head_only_local']} commit(s) on no remote")
         if w["locked"]:
             extra.append("locked")
-        cat = next((b["category"] for b in branches if b["name"] == w["branch"]), None)
+        cat = next((b["category"] for b in result["branches"] if b["name"] == w["branch"]), None)
         print(f"  {w['path']}\n      {what}  |  {state}" + (f"  |  branch is {cat}" if cat else "")
               + ("  |  " + "; ".join(extra) if extra else ""))
-
     print(f"\n== STASHES ({len(stashes)})")
     for s in stashes:
         print(f"  {s[0]}  {s[1] if len(s) > 1 else ''}")
-
-    if candidate_rows:
+    if result["candidate_dev_branches"]:
         print("\n== CANDIDATE DEVELOPMENT BRANCHES (pull requests target these instead of main)")
-        for c in candidate_rows:
+        for c in result["candidate_dev_branches"]:
             pr = f"; its own open PR: #{c['its_own_open_pr']}" if c["its_own_open_pr"] else ""
             print(f"  {c['branch']}: {c['prs_targeting_it']} PR(s) target it"
                   f"{'' if c['exists'] else '; branch no longer exists'}{pr}")
+
+
+def main():
+    global REPO
+    args = parse_args()
+    top = subprocess.run(["git", "-C", args.repo, "rev-parse", "--show-toplevel"],
+                         capture_output=True, text=True)
+    if top.returncode:
+        sys.exit(f"{args.repo} is not inside a git repository")
+    REPO = top.stdout.strip()
+    remote = args.remote
+
+    gold, devs, warnings = targets(args)
+    reference_names = {short(t.ref, remote) for t in [gold] + devs}
+    prs, heads, trees = load_prs(), remote_heads(remote), worktrees()
+    branches = read_branches(gold, devs, prs, heads, trees, reference_names, remote)
+    proposed = {b["name"] for b in branches if b["category"] in ("in-main", "in-dev")}
+    for b in branches:
+        b["stale"] = stale_reason(b, heads, remote, args.stale_days, proposed)
+        if b["stale"]:
+            proposed.add(b["name"])
+    _, stash_out = git("stash", "list", "--format=%gd%x09%gs")
+
+    summary = {k: sum(1 for b in branches if b["category"] == k) for k in ORDER}
+    summary["total"] = len(branches)
+    summary["not_covered_local_only"] = sum(1 for b in branches if b["category"] == "not-covered" and b["local_only"])
+    summary["with_uncommitted_work"] = sum(1 for b in branches if any("UNCOMMITTED" in f for f in b["flags"]))
+    summary["not_merged_but_not_needed_locally"] = sum(1 for b in branches if b["stale"])
+    result = {"repo": REPO, "gold": gold.ref, "dev": [d.ref for d in devs], "pr_data": prs is not None,
+              "remote_checked": heads is not None, "last_fetch": last_fetch_time(), "warnings": warnings,
+              "summary": summary, "branches": branches, "worktrees": trees,
+              "stashes": [line.split("\t", 1) for line in stash_out.splitlines() if line],
+              "candidate_dev_branches": candidate_dev_branches(prs, reference_names, remote)}
+    if args.json_path:
+        with open(args.json_path, "w") as f:
+            json.dump(result, f, indent=1)
+    print_branches(result, len(prs or []))
+    print_worktrees(result)
     if args.json_path:
         print(f"\nfull result written to {args.json_path}")
 
