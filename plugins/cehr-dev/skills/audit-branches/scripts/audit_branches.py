@@ -12,13 +12,14 @@ which touch no ref, no index and no working tree.
 
 Usage:
     audit_branches.py [--repo PATH] [--gold REF] [--dev REF ...] [--json FILE]
-                      [--offline] [--no-gh] [--no-lines] [--pr-limit N]
+                      [--offline] [--no-gh] [--no-lines] [--pr-limit N] [--stale-days N]
 
 Python 3.8+, standard library only. `gh` is optional; without it pull-request state is
 unknown and the script falls back to ancestry and content checks.
 """
 import argparse
 import collections
+import datetime
 import json
 import os
 import subprocess
@@ -124,11 +125,11 @@ def load_prs(limit):
 
 
 def remote_heads(remote):
-    """Branch names that exist on the remote right now (a read-only network call)."""
+    """Branches that exist on the remote right now, name -> sha (a read-only network call)."""
     rc, out = git("ls-remote", "--heads", remote)
     if rc:
         return None
-    return {line.split("refs/heads/", 1)[1] for line in out.splitlines() if "refs/heads/" in line}
+    return {line.split("refs/heads/", 1)[1]: line.split()[0] for line in out.splitlines() if "refs/heads/" in line}
 
 
 def worktrees():
@@ -358,6 +359,35 @@ def classify(b, gold, devs, prs_known, remote, do_lines, raw_prs, merged_by_head
     return done("not-covered", where + ("; " + "; ".join(notes) if notes else ""))
 
 
+def stale_reason(b, heads, remote, stale_days, proposed):
+    """
+    Why an unmerged branch is not needed locally, or None.
+
+    Only when deleting the local branch loses nothing: the live remote branch holds its
+    tip, or another branch that is being kept does. `proposed` is the names flagged so far.
+    """
+    if heads is None or b["category"] not in ("in-another-branch", "not-covered"):
+        return None
+    tip = heads.get(b["name"])
+    if tip:
+        if not (have_object(tip) and is_ancestor(b["sha"], tip)):
+            return None
+        if any(p["state"] == "CLOSED" for p in b["prs"]):
+            return f"pull request closed without merging; {remote}/{b['name']} still holds it"
+        age = (datetime.date.today() - datetime.date.fromisoformat(b["date"])).days
+        if age >= stale_days:
+            return f"no commits for {age} days; {remote}/{b['name']} still holds it"
+        return None
+    if not (b["upstream"] or exists(f"{remote}/{b['name']}")):
+        return None
+    # a holder counts only if it is a live remote branch or a local branch that is kept
+    for ref in b.get("contained_in", []):
+        live = ref.startswith(remote + "/") and short(ref, remote) in heads
+        if live or (exists(f"refs/heads/{ref}") and ref not in proposed):
+            return f"its remote branch was deleted; every commit is also on {ref}"
+    return None
+
+
 def main():
     global REPO
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -371,6 +401,8 @@ def main():
     ap.add_argument("--no-gh", action="store_true", help="do not query pull requests with gh")
     ap.add_argument("--no-lines", action="store_true", help="skip the line-level content check")
     ap.add_argument("--pr-limit", type=int, default=2000)
+    ap.add_argument("--stale-days", type=int, default=90,
+                    help="an unmerged branch this old whose tip is on the remote is not needed locally")
     args = ap.parse_args()
 
     top = subprocess.run(["git", "-C", args.repo, "rev-parse", "--show-toplevel"],
@@ -445,6 +477,11 @@ def main():
             b["flags"].append(f"{b['local_only']} commit(s) on no remote")
         classify(b, gold, devs, prs is not None, remote, not args.no_lines, raw_prs, merged_by_head)
         branches.append(b)
+    proposed = {b["name"] for b in branches if b["category"] in ("in-main", "in-dev")}
+    for b in branches:
+        b["stale"] = stale_reason(b, heads, remote, args.stale_days, proposed)
+        if b["stale"]:
+            proposed.add(b["name"])
 
     _, stash_out = git("stash", "list", "--format=%gd%x09%gs")
     stashes = [line.split("\t", 1) for line in stash_out.splitlines() if line]
@@ -471,6 +508,7 @@ def main():
     summary["total"] = len(branches)
     summary["not_covered_local_only"] = sum(1 for b in groups["not-covered"] if b["local_only"])
     summary["with_uncommitted_work"] = sum(1 for b in branches if any("UNCOMMITTED" in f for f in b["flags"]))
+    summary["not_merged_but_not_needed_locally"] = sum(1 for b in branches if b["stale"])
 
     result = {"repo": REPO, "gold": gold.ref, "dev": [d.ref for d in devs], "pr_data": prs is not None,
               "remote_checked": heads is not None, "last_fetch": last_fetch, "warnings": warnings,
@@ -500,6 +538,7 @@ def main():
         extra = f" (of which local only: {summary['not_covered_local_only']})" if k == "not-covered" else ""
         print(f"  {k}: {summary[k]}{extra}")
     print(f"  branches with uncommitted work in a worktree: {summary['with_uncommitted_work']}")
+    print(f"  not merged but not needed locally: {summary['not_merged_but_not_needed_locally']}")
 
     for k in order:
         if not groups[k]:
@@ -509,6 +548,8 @@ def main():
             print(f"  {b['name']}  [{b['date']}]  {b['reason']}")
             for f in b["flags"]:
                 print(f"      ! {f}")
+            if b["stale"]:
+                print(f"      NOT NEEDED LOCALLY: {b['stale']}")
             if b.get("worktree") and not any("main working folder" in f for f in b["flags"]):
                 print(f"      worktree: {b['worktree']}")
             if k == "not-covered":

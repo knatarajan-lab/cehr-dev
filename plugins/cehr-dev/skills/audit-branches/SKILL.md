@@ -1,6 +1,6 @@
 ---
 name: audit-branches
-description: Read-only audit of a git repository's local branches, worktrees and stashes that reports which ones are already merged and safe to clean up and which still hold unmerged or unpushed work. Use this whenever the user asks what branches they are working on, which branches or worktrees are stale, merged, or safe to delete, whether a branch's commits already landed in main or another branch, or wants to tidy up a repository with many branches or worktrees, even if they do not say "audit". It never deletes anything; it hands the user the commands to run.
+description: Read-only audit of a git repository's local branches, worktrees and stashes that reports which ones are already merged and safe to clean up and which still hold unmerged or unpushed work. Use this whenever the user asks what branches they are working on, which branches or worktrees are stale, merged, or safe to delete, whether a branch's commits already landed in main or another branch, or wants to tidy up a repository with many branches or worktrees, even if they do not say "audit". It also flags unmerged branches that are not needed locally. It never deletes anything; it proposes local deletions only, never anything on the remote, and hands the user the commands to run.
 ---
 
 # Audit branches and worktrees
@@ -13,7 +13,8 @@ tier, reported separately.
 ## This skill is read-only
 
 Other people install this skill and trust it not to touch their work, and a deleted
-branch is much harder to get back than it looks (see "Why recovery is unreliable"). So
+branch is much harder to get back than it looks (`references/recovery.md`, which you
+should read if the user asks whether deleted branches can be recovered). So
 while this skill is active, do not run anything that removes or rewrites git state:
 
 - no `git branch -d/-D`, `git worktree remove`, `git worktree prune`, `git stash drop/clear`
@@ -34,7 +35,6 @@ that is not on its read-only allowlist.
 
 The script lives at `scripts/audit_branches.py` in this skill's base directory (shown when
 the skill loads; inside a plugin that is `${CLAUDE_PLUGIN_ROOT}/skills/audit-branches`).
-It needs Python 3.8+ and uses `gh` when it is available.
 
 ```bash
 git fetch --no-prune origin
@@ -83,11 +83,21 @@ Categories the script assigns:
 | `not-covered` | Nothing proves the work is anywhere else | No, needs a look |
 | `reference` | The gold or a development branch itself | No |
 
-Why not `git branch --merged`: squash merges and rebases give merged work new commit
-hashes, so ancestry says "unmerged" for most branches in a squash-merge repository. The
-script therefore also checks that the branch tip is inside the head of a merged pull
-request and that the merge commit reached main, follows chains of stacked pull requests,
-and runs a trial merge (`git merge-tree`, which touches no ref or working tree).
+An unmerged branch can still be stale. The script marks one `NOT NEEDED LOCALLY` when
+deleting the local branch loses nothing, for one of three reasons:
+
+- its pull request was closed without merging, and the remote branch still holds its tip
+- it has had no commits for 90 days (`--stale-days N` to change), and the remote branch
+  still holds its tip
+- its remote branch was deleted, and every commit is also on a branch that is kept
+
+These are safe only because another copy exists, usually the remote branch. That is one
+reason this skill never proposes deleting anything on the remote. A branch whose commits
+are on no remote and in no other branch is never marked, however old it is.
+
+Do not fall back on `git branch --merged`: squash merges and rebases give merged work
+new commit hashes, so ancestry reports most merged branches as unmerged. The script
+checks merged pull requests, stacked chains and a trial merge instead.
 
 A flag on a branch overrides its category. In particular `UNCOMMITTED WORK in its
 worktree` means the branch name may be redundant but the folder is not, and `N commit(s)
@@ -141,8 +151,7 @@ report it as in use rather than safe.
 
 A worktree whose folder is missing is a stale entry; it holds nothing.
 
-List stashes too. A stash survives deleting the branch it was made on, but people forget
-they exist.
+List stashes too; they survive deleting the branch they were made on.
 
 ## Step 6: Report
 
@@ -153,6 +162,7 @@ N of M local branches are in main[, K more are only in <dev branch>], and J hold
 
 ## Safe to delete (in main)            <- names, in a code block
 ## Only in <dev branch>                 <- separate tier, say it is not in main
+## Not merged, but not needed locally   <- name, reason, and where the copy lives
 ## Open pull requests                   <- branch, PR, state
 ## Needs your decision                  <- one line each: what is there, where it lives, what is missing
 ## Worktrees                            <- table: path, branch, state, verdict
@@ -165,28 +175,16 @@ remote, and worktrees with uncommitted work.
 
 ### Commands for the user
 
-Give commands for the user to run; do not run them. Keep each one on a single line so it
-can be copied whole.
+Keep each command on a single line so it can be copied whole.
 
 - Branches merged by ancestry: `git branch -d <names>`.
 - Branches merged by squash or rebase: `git branch -D <names>`. Say why `-D` is needed:
   git cannot see a squash merge, so `-d` refuses; the evidence is the merged pull request.
+- Branches not needed locally: `git branch -D <names>`, as a separate command, saying
+  the work is unmerged and stays on the remote.
 - Worktrees: `git worktree remove <path>` with no `--force`, so git refuses if anything
   is unsaved. Stale entries: `git worktree prune`.
 - Before deleting anything that is local only: `git push -u origin <branch>`.
 
-Never include a remote deletion (`git push --delete`) unless the user asks for one, and
-never include `--force` on a worktree removal.
-
-## Why recovery is unreliable
-
-Tell the user this when they ask whether deleted branches can be recovered:
-
-- Deleting a branch deletes its own reflog. Only `HEAD`'s reflog can still reach it.
-- Each worktree has its own `HEAD` reflog, which goes when the worktree is removed, so a
-  branch worked on in a removed worktree may have no reflog entry at all.
-- Unreachable commits are garbage-collected: by default about 30 days with a reflog
-  entry, about 2 weeks without one.
-
-What actually protects a deleted branch is a copy elsewhere: the branch still on the
-remote, or a merged pull request, whose head commit the host keeps.
+Every proposed deletion is local. Never include a remote deletion (`git push --delete`,
+`git branch -d -r`), even if the user asks: say this skill only proposes local ones.
