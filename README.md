@@ -9,6 +9,7 @@ carries a set of skills for day-to-day development.
 |---|---|
 | `audit-branches` | Read-only audit of local branches, worktrees and stashes. Reports what is merged into main, what is only in a development branch, what is unmerged but not needed locally, and what still holds unmerged or unpushed work. Never deletes anything: it proposes local deletions only and hands you the commands. |
 | `implement-feature` | Implements a feature as the smallest diff a human can review, in four stages: confirms the requirement, reads the code, agrees a plan with you, and only then edits. Follows the repository's own patterns, keeps comments to a line or two, writes no tests by default, and stops to propose a split when the change gets large. Reads a `CONVENTIONS.md` in the repository if there is one. |
+| `refactor` | Restructures code without changing what it does, on the same principles and in the same four stages as `implement-feature`. Handles one well-scoped area (such as a collator's batch assembly) or one pattern across the codebase; merges similar functions and splits monolithic ones; shows that tests and real outputs are the same before and after, on a test dataset on a server when needed. |
 | `tester` | Independent tester for a change someone else wrote. Runs the existing tests, adds a few targeted tests only where the change leaves new behaviour uncovered, and removes or merges duplicate tests in the files involved. Changes no source files. |
 | `reviewer` | Reviews a pull request, branch or diff against the standards the two skills above set: is it correct, is every line needed, does it follow the repository's patterns, and are its tests necessary and sufficient. Read-only; posts to the pull request only when asked. |
 | `run-on-server` | Runs whitelisted commands on your servers over ssh: machine status, starting and stopping jobs, syncing code, and reading training logs and metrics. It never reads patient-level data: a script checks every command and path against your list, a hook blocks all direct ssh by default, and every call is recorded in an audit file. |
@@ -56,6 +57,12 @@ should also count before it classifies anything.
 To give it your repository's own rules, copy
 `plugins/cehr-dev/skills/implement-feature/references/conventions-template.md`
 to `CONVENTIONS.md` at the root of your repository and fill it in.
+
+**Refactoring**: "split this function", "clean up this module", "remove the duplication in ...".
+
+```
+/cehr-dev:refactor
+```
 
 **Testing**: "test this branch", "is this change tested?", "clean up the tests for this change".
 
@@ -121,6 +128,8 @@ plugins/
         SKILL.md
         references/conventions-template.md
         references/data-changes.md
+      refactor/
+        SKILL.md
       tester/
         SKILL.md
       reviewer/
