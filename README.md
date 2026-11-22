@@ -8,7 +8,7 @@ carries a set of skills for day-to-day development.
 | Skill | What it does |
 |---|---|
 | `audit-branches` | Read-only audit of local branches, worktrees and stashes. Reports what is merged into main, what is only in a development branch, what is unmerged but not needed locally, and what still holds unmerged or unpushed work. Never deletes anything: it proposes local deletions only and hands you the commands. |
-| `implement-feature` | Implements a feature as the smallest diff a human can review: follows the repository's own patterns, keeps comments to a line or two, writes no tests by default, and stops to propose a split when the change gets large. Reads a `CONVENTIONS.md` in the repository if there is one. |
+| `implement-feature` | Implements a feature as the smallest diff a human can review, in four stages: confirms the requirement, reads the code, agrees a plan with you, and only then edits. Follows the repository's own patterns, keeps comments to a line or two, writes no tests by default, and stops to propose a split when the change gets large. Reads a `CONVENTIONS.md` in the repository if there is one. |
 | `tester` | Independent tester for a change someone else wrote. Runs the existing tests, adds a few targeted tests only where the change leaves new behaviour uncovered, and removes or merges duplicate tests in the files involved. Changes no source files. |
 
 ## Install

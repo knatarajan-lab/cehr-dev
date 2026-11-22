@@ -1,6 +1,6 @@
 ---
 name: implement-feature
-description: Implement a new feature, option, flag or behaviour in an existing codebase as the smallest diff a human can review, following the repository's own patterns, with short comments and no inflated tests. Use this whenever the user asks to add, implement, build, support or extend something in existing code, or to wire a new option through it, even if they do not mention diff size or review. Not for greenfield projects, pure refactors or bug hunts.
+description: Implement a new feature, option, flag or behaviour in an existing codebase as the smallest diff a human can review, in four stages - confirm the requirement, read the code, agree a plan with the user, then implement it following the repository's own patterns, with short comments and no inflated tests. Use this whenever the user asks to add, implement, build, support or extend something in existing code, or to wire a new option through it, even if they do not mention diff size or review. Not for greenfield projects, pure refactors or bug hunts.
 ---
 
 # Implement a feature as a small, reviewable change
@@ -10,53 +10,74 @@ so each added line has to earn its place: lines that are not needed for the feat
 work make the real change harder to see and slower to trust. Aim for the diff an
 experienced maintainer of this repository would have written by hand.
 
-## Before editing
+Work through four stages in order. Do not edit any file until the user has approved the
+plan in stage 3: a misunderstanding caught in a plan costs a minute, and one caught in a
+diff costs a review.
 
-### 1. Read the repository's conventions
+## Stage 1: Get the requirement
 
-Look for a conventions file, in this order: `CONVENTIONS.md`, `docs/CONVENTIONS.md`,
-`.claude/CONVENTIONS.md`, then `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`. Its rules
-override the defaults in this skill, including the size budget and the test policy.
+Restate the request in a few lines, so the user can correct it before you read anything:
 
-If there is none, learn the conventions from the code: find two or three recent commits
-that added something similar (`git log --oneline -- <likely files>`, then `git show`)
-and treat them as the template. Say in your plan that you inferred the conventions, and
-mention that `references/conventions-template.md` in this skill is a starting point if
-the user wants to write them down.
+- what happens with the feature on, and how it is turned on
+- what must stay unchanged
+- what you take to be out of scope
 
-### 2. Confirm the base branch
+Ask about anything that only the user can answer and that would change the design: an
+ambiguous behaviour, a default, which of two readings they mean. Ask in one batch, with
+the question tool if there is one. Do not ask what the code can tell you.
 
-Ask which branch to build on unless the user already said. The default branch is often
-far behind where work actually happens, and code written against it re-implements
-things that already exist on the active branch. If there is a question tool, use it and
-offer the current branch, the default branch, and any branch that recent pull requests
-target.
+Confirm the base branch unless the user already said. The default branch is often far
+behind where work actually happens, and code written against it re-implements things
+that already exist on the active branch. Offer the current branch, the default branch,
+and any branch that recent pull requests target.
 
-### 3. Find the closest existing feature and copy its shape
+## Stage 2: Read the code
 
-Most features have a precedent: an option that is already plumbed through the same
-layers, a command that already does something similar. Find it and follow the same path
-through the same files. A new option that travels the same route as an old one is a
-change reviewers can check by comparison.
+**The conventions.** Look for a conventions file, in this order: `CONVENTIONS.md`,
+`docs/CONVENTIONS.md`, `.claude/CONVENTIONS.md`, then `CLAUDE.md`, `AGENTS.md`,
+`CONTRIBUTING.md`. Its rules override the defaults in this skill, including the size
+budget and the test policy. If there is none, find two or three recent commits that
+added something similar (`git log --oneline -- <likely files>`, then `git show`) and
+treat them as the template. Say in the plan that you inferred the conventions;
+`references/conventions-template.md` is a starting point if the user wants to write
+them down.
 
-Before writing any helper, search for one that already does the job (by name and by
-what it does: `git grep` the verbs and nouns you would use). A second copy of an
-existing helper is the most common avoidable addition.
+**The closest existing feature.** Most features have a precedent: an option already
+plumbed through the same layers, a command that already does something similar. Follow
+the same path through the same files. A new option that travels the same route as an
+old one is a change reviewers can check by comparison.
 
-### 4. State the plan and its size
+**Helpers that already exist.** Before planning a new helper, search for one that does
+the job (`git grep` the verbs and nouns you would use). A second copy of an existing
+helper is the most common avoidable addition.
 
-Before the first edit, tell the user in a few lines:
+**What the feature disturbs.** Find the places that use whatever the feature removes or
+makes optional. A path that worked before and breaks once the feature is on belongs in
+the plan.
+
+## Stage 3: Agree the plan
+
+Give the user a plan they can read in a minute:
 
 - the files you will touch and roughly how many lines in each
 - the existing feature you are using as the template
 - anything the request could be read to include that you are leaving out
+- each choice that is the user's to make, with your recommendation (for example, what
+  happens when a saved model disagrees with the new option)
 
 **Size budget**: 150 changed source lines or 6 files, unless the conventions file sets
 another number. The budget counts source files and lines; tests are limited separately,
-below. If your estimate is over, stop and propose how to split the work into
-changes that each stand on their own, and let the user choose.
+below. If your estimate is over, propose how to split the work into changes that each
+stand on their own, and let the user choose.
 
-## While editing
+Then stop and wait for the user's answer; use plan mode if the environment has one.
+Start editing only after they approve. If they change the plan, say what changed and
+confirm again. A small feature still gets a plan: three lines is enough.
+
+## Stage 4: Implement
+
+Implement the approved plan and nothing else. If it turns out to need a file or a
+behaviour the plan did not cover, or to go over the budget, stop and go back to the user.
 
 **Change only what the feature needs.** For every hunk, the test is: would the feature
 work without it? If yes, leave it out. That rules out renames, reordering, added type
@@ -66,9 +87,8 @@ belong in their own change.
 
 One thing is not a drive-by: a code path that worked before and breaks once your feature
 is switched on. Your change created that failure, so its fix is part of the feature,
-even when it is a one-line guard in a function you were not otherwise touching. Before
-you finish, look for the places that use whatever your feature removes or makes
-optional. A defect that was already there with the feature off stays on the list.
+even when it is a one-line guard in a function you were not otherwise touching. A
+defect that was already there with the feature off stays on the list.
 
 **Follow the plumbing that exists.** Do not introduce a new abstraction, base class,
 registry or config mechanism for a single use.
@@ -104,7 +124,7 @@ your reasoning to the reviewer.
 Docstrings on new functions: match the neighbours, three lines at most. Error messages:
 one short sentence.
 
-## Tests
+### Tests
 
 **Write no new tests by default.** Tests written by the same agent that wrote the code
 share its understanding of the code, so they pass by construction and tell the reviewer
@@ -136,7 +156,7 @@ a test to make it pass.
 Where it is cheap, exercise the new behaviour once for real (run the command, call the
 function) and say what you saw. Say plainly what you could not verify.
 
-## Before handing over
+### Before handing over
 
 Read your own diff as the reviewer will:
 
@@ -148,11 +168,11 @@ Read your own diff as the reviewer will:
 
 Do not commit or push unless the user asked.
 
-## Report
+### Report
 
 Keep it short:
 
 - what the feature does and how to use it (one or two lines, with the option or command)
-- files changed with line counts, and the total against your estimate
+- files changed with line counts, and the total against the plan
 - what you ran and what happened; what you did not verify
 - "noticed, not changed": problems you saw and deliberately left alone
