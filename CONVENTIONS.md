@@ -26,7 +26,13 @@ stays only if an agent would act differently without it. Do not restate a rule i
 second place, add an example where the rule is already clear, or cover a case that has
 not come up. The same holds for reference files and scripts.
 
-When it grows past that, do not trim the wording first. Move content out:
+When it grows past that, go in this order, and do not squeeze the wording of what is
+left to make it fit:
+
+1. Delete what the agent would act the same without. A reference file is not a place to
+   keep text that did not earn a line.
+2. Move a rule about one repository to that repository's `CONVENTIONS.md`.
+3. Move out what is needed, but only in some runs:
 
 - **`references/<topic>.md`** for material only some runs need: long examples, lookup
   tables, edge cases, templates, variants for different tools. `SKILL.md` names each
@@ -50,6 +56,8 @@ If it is still over 200 lines after that, the skill is probably doing two jobs.
 - Use `context: fork` only for a skill that must not see the conversation and never
   needs to ask a question (`tester`). A forked skill gets the skill text and its
   arguments, nothing else.
+- In a script, a function over about 40 lines needs a reason. Split it at a natural seam,
+  a step with its own inputs and outputs, not to meet the number.
 - No per-skill README or changelog. The skill folder holds `SKILL.md`, `references/`
   and `scripts/`.
 

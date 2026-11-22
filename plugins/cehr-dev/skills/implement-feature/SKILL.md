@@ -64,6 +64,8 @@ Give the user a plan they can read in a minute:
 - anything the request could be read to include that you are leaving out
 - each choice that is the user's to make, with your recommendation (for example, what
   happens when a saved model disagrees with the new option)
+- for a change that touches data: which existing dataset or cache it reuses, what it
+  would newly write to disk and how large, and whether any dataset hash changes
 
 **Size budget**: 150 changed source lines or 6 files, unless the conventions file sets
 another number. The budget counts source files and lines; tests are limited separately,
@@ -92,6 +94,15 @@ defect that was already there with the feature off stays on the list.
 
 **Follow the plumbing that exists.** Do not introduce a new abstraction, base class,
 registry or config mechanism for a single use.
+
+**Data changes add no storage and keep hashes stable.** If the change touches datasets,
+tokenization or caches, read `references/data-changes.md` before planning: reuse what
+is already stored, and do not alter the hash by which existing data is found.
+
+**Keep functions short.** A new function over about 40 lines, or more lines added to one
+that already is, needs a reason. Split at a natural seam, a step with its own inputs and
+outputs, not to meet the number: one straight-line function reads better than eight
+fragments.
 
 **Trust the code's own guarantees.** If the dataclass, parser or config defines a field,
 read it directly. `getattr(obj, "field", default)`, `hasattr`, and `try/except` around

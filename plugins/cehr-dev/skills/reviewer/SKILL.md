@@ -21,6 +21,8 @@ The standard is the one the author was asked to meet. Before reading the change,
   change, comments, and the author's test policy
 - `${CLAUDE_PLUGIN_ROOT}/skills/tester/SKILL.md`, steps 3 and 4: which tests a change
   needs and which are duplicates
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement-feature/references/data-changes.md`, when the
+  change touches datasets, tokenization or caches
 
 ## Ground rules
 
