@@ -10,6 +10,7 @@ carries a set of skills for day-to-day development.
 | `audit-branches` | Read-only audit of local branches, worktrees and stashes. Reports what is merged into main, what is only in a development branch, what is unmerged but not needed locally, and what still holds unmerged or unpushed work. Never deletes anything: it proposes local deletions only and hands you the commands. |
 | `implement-feature` | Implements a feature as the smallest diff a human can review, in four stages: confirms the requirement, reads the code, agrees a plan with you, and only then edits. Follows the repository's own patterns, keeps comments to a line or two, writes no tests by default, and stops to propose a split when the change gets large. Reads a `CONVENTIONS.md` in the repository if there is one. |
 | `tester` | Independent tester for a change someone else wrote. Runs the existing tests, adds a few targeted tests only where the change leaves new behaviour uncovered, and removes or merges duplicate tests in the files involved. Changes no source files. |
+| `reviewer` | Reviews a pull request, branch or diff against the standards the two skills above set: is it correct, is every line needed, does it follow the repository's patterns, and are its tests necessary and sufficient. Read-only; posts to the pull request only when asked. |
 
 ## Install
 
@@ -63,9 +64,19 @@ to `CONVENTIONS.md` at the root of your repository and fill it in.
 
 It runs in its own context (`context: fork`) and does not see the conversation that
 invoked it, so say what the change should do and which change to test. It leaves its
-edits uncommitted for you to read as a diff. The other two
-skills run in the conversation; start a new session or `/clear` first if you want them
-to start clean.
+edits uncommitted for you to read as a diff. `audit-branches` and `implement-feature`
+run in the conversation; start a new session or `/clear` first if you want them to
+start clean.
+
+**Review**: "review PR 215", "is this branch ok to merge?".
+
+```
+/cehr-dev:reviewer 215
+```
+
+It also runs in its own context and returns findings with file and line. It changes
+nothing. Add `post` to have it post the review as a comment on the pull request; it
+never approves, requests changes or merges.
 
 ## Requirements
 
@@ -94,6 +105,8 @@ plugins/
         SKILL.md
         references/conventions-template.md
       tester/
+        SKILL.md
+      reviewer/
         SKILL.md
 ```
 

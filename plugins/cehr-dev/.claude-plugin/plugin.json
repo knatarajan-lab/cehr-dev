@@ -1,7 +1,7 @@
 {
   "name": "cehr-dev",
-  "description": "Skills for day-to-day development: a read-only audit of git branches and worktrees, feature implementation as a small reviewable diff, and an independent tester that adds only the tests a change needs and removes duplicates.",
-  "version": "0.2.0",
+  "description": "Skills for day-to-day development: a read-only audit of git branches and worktrees, feature implementation as a small reviewable diff, an independent tester that adds only the tests a change needs and removes duplicates, and a reviewer that checks a pull request against the same standards.",
+  "version": "0.3.0",
   "author": {
     "name": "Chao Pang"
   },
