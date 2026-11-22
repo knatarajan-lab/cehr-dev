@@ -7,8 +7,9 @@ carries a set of skills for day-to-day development.
 
 | Skill | What it does |
 |---|---|
-| `audit-branches` | Read-only audit of local branches, worktrees and stashes. Reports what is merged into main, what is only in a development branch, and what still holds unmerged or unpushed work. Never deletes anything; it hands you the commands. |
+| `audit-branches` | Read-only audit of local branches, worktrees and stashes. Reports what is merged into main, what is only in a development branch, what is unmerged but not needed locally, and what still holds unmerged or unpushed work. Never deletes anything: it proposes local deletions only and hands you the commands. |
 | `implement-feature` | Implements a feature as the smallest diff a human can review: follows the repository's own patterns, keeps comments to a line or two, writes no tests by default, and stops to propose a split when the change gets large. Reads a `CONVENTIONS.md` in the repository if there is one. |
+| `tester` | Independent tester for a change someone else wrote. Runs the existing tests, adds a few targeted tests only where the change leaves new behaviour uncovered, and removes or merges duplicate tests in the files involved. Changes no source files. |
 
 ## Install
 
@@ -54,6 +55,18 @@ To give it your repository's own rules, copy
 `plugins/cehr-dev/skills/implement-feature/references/conventions-template.md`
 to `CONVENTIONS.md` at the root of your repository and fill it in.
 
+**Testing**: "test this branch", "is this change tested?", "clean up the tests for this change".
+
+```
+/cehr-dev:tester the new --foo option should ..., branch my-feature against main
+```
+
+It runs in its own context (`context: fork`) and does not see the conversation that
+invoked it, so say what the change should do and which change to test. It leaves its
+edits uncommitted for you to read as a diff. The other two
+skills run in the conversation; start a new session or `/clear` first if you want them
+to start clean.
+
 ## Requirements
 
 For `audit-branches`:
@@ -67,6 +80,8 @@ For `audit-branches`:
 
 ```
 .claude-plugin/marketplace.json
+CONVENTIONS.md
+CLAUDE.md
 plugins/
   cehr-dev/
     .claude-plugin/plugin.json
@@ -74,10 +89,14 @@ plugins/
       audit-branches/
         SKILL.md
         scripts/audit_branches.py
+        references/recovery.md
       implement-feature/
         SKILL.md
         references/conventions-template.md
+      tester/
+        SKILL.md
 ```
 
 To add a skill, create `plugins/cehr-dev/skills/<name>/SKILL.md` and add a row to the
-table above.
+table above. [CONVENTIONS.md](CONVENTIONS.md) has the rules: one job per skill,
+`SKILL.md` under 200 lines, detail moved into `references/` and `scripts/`.

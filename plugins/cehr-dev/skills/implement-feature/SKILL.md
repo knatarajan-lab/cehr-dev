@@ -54,8 +54,7 @@ Before the first edit, tell the user in a few lines:
 **Size budget**: 150 changed source lines or 6 files, unless the conventions file sets
 another number. The budget counts source files and lines; tests are limited separately,
 below. If your estimate is over, stop and propose how to split the work into
-changes that each stand on their own, and let the user choose. A reviewer handles two
-small changes far better than one large one.
+changes that each stand on their own, and let the user choose.
 
 ## While editing
 
@@ -100,16 +99,10 @@ is the way it is, and keep it to one or two lines.
 
 Do not write comments that restate the code, narrate history ("previously", "no longer",
 "renamed from"), record benchmark numbers, describe who calls the function, or explain
-your reasoning to the reviewer. That material belongs in the commit message or nowhere.
+your reasoning to the reviewer.
 
 Docstrings on new functions: match the neighbours, three lines at most. Error messages:
 one short sentence.
-
-```python
-# Right size: says why, in two lines
-# Above this value the term grows linearly instead of exponentially,
-# so one outlier cannot blow up the loss; None disables it
-```
 
 ## Tests
 
@@ -129,8 +122,8 @@ existing loss) needs no test: there is no independent value to compare against, 
 running the feature once shows whether it is connected.
 
 Never write tests for: default values, argument parsing, help text, error message
-wording, that a removed argument stays removed, that a mock received certain keyword
-arguments, or a re-implementation of the code under test.
+wording, that a removed argument stays removed, or that a mock received certain keyword
+arguments.
 
 If the user asks for tests, write what they ask for.
 
