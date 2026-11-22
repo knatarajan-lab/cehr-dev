@@ -38,7 +38,7 @@ the skill loads; inside a plugin that is `${CLAUDE_PLUGIN_ROOT}/skills/audit-bra
 
 ```bash
 git fetch --no-prune origin
-python3 <skill-dir>/scripts/audit_branches.py --repo <repo> --no-lines
+python3 <skill-dir>/scripts/audit_branches.py --repo <repo>
 ```
 
 Fetch first because stale remote-tracking refs give wrong answers (a merged pull request
@@ -108,8 +108,8 @@ on no remote` means deleting it leaves no copy anywhere.
 `not-covered` and `in-another-branch` are where judgment is needed, and where a wrong
 "it's merged" costs the user real work. For each, read before concluding:
 
-1. Start from the script's evidence against the closest target: trial merge result,
-   equivalent patches, how many added lines exist there, which files are absent.
+1. Start from the script's evidence against each target: the trial merge result and
+   how many commits have an equivalent patch there.
 2. Read the branch's own commits: `git log --oneline <branch> --not <target>` and
    `git show <commit>`.
 3. Look for the same change in the target. Code moves, so search for the distinctive
@@ -126,7 +126,6 @@ Then say which of these it is, and keep them apart in the report:
 - **Absent**: not there.
 - **Superseded or rejected**: the target does something different on purpose.
 
-A high "added lines found" number is a hint, not proof: common lines match by accident.
 Say what you did not check; you compared code, you did not run tests.
 
 When you write shell loops here, write `"${ref}:${path}"` rather than `$ref:path`

@@ -1,21 +1,11 @@
 #!/usr/bin/env python3
 """Read-only audit of a git repository's local branches, worktrees and stashes.
 
-For every local branch it answers: is this work already in the gold-standard branch
-(by default the remote's default branch, e.g. origin/main), is it only in a named
-development branch, or does it exist nowhere else?
+For every local branch: is its work already in the gold-standard branch (by default the
+remote's default branch), only in a named development branch, or nowhere else?
 
-It never changes the repository. Every git call goes through an allowlist of read-only
-subcommands (see _check), nothing is fetched, pruned, checked out or deleted. The one
-thing it can write is unreferenced tree objects from `git merge-tree` (trial merges),
-which touch no ref, no index and no working tree.
-
-Usage:
-    audit_branches.py [--repo PATH] [--gold REF] [--dev REF ...] [--json FILE]
-                      [--offline] [--no-gh] [--no-lines] [--pr-limit N] [--stale-days N]
-
-Python 3.8+, standard library only. `gh` is optional; without it pull-request state is
-unknown and the script falls back to ancestry and content checks.
+It never changes the repository: every git call goes through an allowlist of read-only
+subcommands (see _check). Python 3.8+, standard library only; `gh` is optional.
 """
 import argparse
 import collections
@@ -29,8 +19,8 @@ import time
 REPO = "."
 
 READ_ONLY = {
-    "rev-parse", "for-each-ref", "rev-list", "merge-base", "log", "show", "cherry",
-    "merge-tree", "grep", "diff", "status", "cat-file", "symbolic-ref", "ls-remote",
+    "rev-parse", "for-each-ref", "rev-list", "merge-base", "cherry", "merge-tree",
+    "status", "cat-file", "symbolic-ref", "ls-remote",
 }
 READ_ONLY_FORMS = {("worktree", "list"), ("stash", "list")}
 
@@ -106,12 +96,12 @@ def short(ref, remote):
     return ref[len(remote) + 1:] if ref.startswith(remote + "/") else ref
 
 
-def load_prs(limit):
+def load_prs():
     """All pull requests of the repository, or None when gh cannot provide them."""
     fields = "number,state,title,headRefName,headRefOid,baseRefName,mergeCommit,mergedAt,isCrossRepository"
     try:
         r = subprocess.run(
-            ["gh", "pr", "list", "--state", "all", "--limit", str(limit), "--json", fields],
+            ["gh", "pr", "list", "--state", "all", "--limit", "2000", "--json", fields],
             cwd=REPO, capture_output=True, text=True, timeout=180,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -173,25 +163,11 @@ def worktrees():
 
 
 class Target:
-    """A ref to compare against, with its lines cached for the content check."""
+    """A ref to compare against."""
 
     def __init__(self, ref):
         self.ref = ref
         self.tree = git("rev-parse", f"{ref}^{{tree}}")[1].strip()
-        self._anywhere = None
-        self._files = {}
-
-    def anywhere(self):
-        if self._anywhere is None:
-            _, dump = git("grep", "-I", "-h", "-e", "", self.ref, "--")
-            self._anywhere = {line.strip() for line in dump.splitlines()}
-        return self._anywhere
-
-    def file(self, path):
-        if path not in self._files:
-            rc, out = git("show", f"{self.ref}:{path}")
-            self._files[path] = None if rc else {line.strip() for line in out.splitlines()}
-        return self._files[path]
 
 
 def trial_merge(target, sha):
@@ -207,42 +183,6 @@ def trial_merge(target, sha):
     if rc != 0 or not out.strip():
         return "unavailable"
     return "no-op" if out.split()[0] == target.tree else "changes"
-
-
-def line_coverage(sha, target, max_commits=40):
-    """How many of the lines the branch added can be found in the target."""
-    _, out = git("rev-list", "--no-merges", "--reverse", sha, "--not", target.ref)
-    commits = out.split()
-    res = {"commits": len(commits), "added": 0, "same_file": 0, "anywhere": 0,
-           "missing": 0, "absent_files": [], "samples": [], "truncated": len(commits) > max_commits}
-    absent = set()
-    for c in commits[:max_commits]:
-        _, diff = git("show", "--format=", "-U0", c)
-        path = None
-        for line in diff.splitlines():
-            if line.startswith("+++ "):
-                path = None if line.endswith("/dev/null") else line[6:]
-                if path and target.file(path) is None:
-                    absent.add(path)
-                continue
-            if not line.startswith("+") or line.startswith("+++"):
-                continue
-            s = line[1:].strip()
-            if len(s) < 6:
-                continue
-            res["added"] += 1
-            in_file = path and target.file(path) is not None and s in target.file(path)
-            if in_file:
-                res["same_file"] += 1
-                res["anywhere"] += 1
-            elif s in target.anywhere():
-                res["anywhere"] += 1
-            else:
-                res["missing"] += 1
-                if len(res["samples"]) < 5:
-                    res["samples"].append([path, s[:140]])
-    res["absent_files"] = sorted(absent)[:12]
-    return res
 
 
 def follow_chain(pr, gold, devs, merged_by_head, depth=0):
@@ -275,7 +215,7 @@ def contained_in(name, sha, remote):
     return [r for r in out.split() if r not in own][:4]
 
 
-def classify(b, gold, devs, prs_known, remote, do_lines, raw_prs, merged_by_head):
+def classify(b, gold, devs, prs_known, remote, raw_prs, merged_by_head):
     """Decide the category of one branch and say why. Mutates and returns b."""
     sha = b["sha"]
     merged = [p for p in b["prs"] if p["state"] == "MERGED"]
@@ -326,15 +266,11 @@ def classify(b, gold, devs, prs_known, remote, do_lines, raw_prs, merged_by_head
                      + (f" (same title as merged PR #{twin})" if twin else ""))
     b["content"] = {}
     for t in [gold] + devs:
-        entry = {"trial_merge": trial_merge(t, sha)}
         _, cherry = git("cherry", t.ref, sha)
         marks = [line[0] for line in cherry.splitlines() if line]
-        entry["patch_equivalent"] = f"{marks.count('-')}/{len(marks)}"
-        b["content"][t.ref] = entry
-    for t in [gold] + devs:
-        e = b["content"][t.ref]
-        all_equiv = e["patch_equivalent"].split("/")[0] == e["patch_equivalent"].split("/")[1] != "0"
-        if e["trial_merge"] == "no-op" or all_equiv:
+        e = {"trial_merge": trial_merge(t, sha), "patch_equivalent": f"{marks.count('-')}/{len(marks)}"}
+        b["content"][t.ref] = e
+        if e["trial_merge"] == "no-op" or (marks and marks.count("-") == len(marks)):
             how = "a trial merge changes nothing" if e["trial_merge"] == "no-op" else "every commit has an equivalent patch"
             cat = "in-main" if t is gold else "in-dev"
             return done(cat, f"content is in {t.ref}: {how}" + ("; " + "; ".join(notes) if notes else ""), t.ref)
@@ -350,9 +286,6 @@ def classify(b, gold, devs, prs_known, remote, do_lines, raw_prs, merged_by_head
         return done("in-another-branch",
                     f"every commit is also on {', '.join(others)}, which is not on {targets}"
                     + ("; " + "; ".join(notes) if notes else ""))
-    if do_lines:
-        for t in [gold] + devs:
-            b["content"][t.ref]["lines"] = line_coverage(sha, t)
     where = "local only: these commits are on no remote" if b["local_only"] else "pushed"
     if not prs_known:
         notes.append("pull-request state unknown (gh unavailable)")
@@ -397,10 +330,6 @@ def main():
     ap.add_argument("--dev", action="append", default=[],
                     help="a development/integration branch that also counts; repeatable")
     ap.add_argument("--json", dest="json_path", help="also write the full result as JSON to this file")
-    ap.add_argument("--offline", action="store_true", help="do not ask the remote which branches exist")
-    ap.add_argument("--no-gh", action="store_true", help="do not query pull requests with gh")
-    ap.add_argument("--no-lines", action="store_true", help="skip the line-level content check")
-    ap.add_argument("--pr-limit", type=int, default=2000)
     ap.add_argument("--stale-days", type=int, default=90,
                     help="an unmerged branch this old whose tip is on the remote is not needed locally")
     args = ap.parse_args()
@@ -424,14 +353,12 @@ def main():
     for t in [gold] + devs:
         local = short(t.ref, remote)
         if t.ref != local and exists(local):
-            ahead, behind = count(local, "--not", t.ref), count(t.ref, "--not", local)
+            ahead = count(local, "--not", t.ref)
             if ahead:
                 warnings.append(f"local {local} has {ahead} commit(s) that {t.ref} does not; they are not counted as covered")
-            if behind:
-                warnings.append(f"local {local} is {behind} commit(s) behind {t.ref}; the audit compares against {t.ref}")
 
-    prs = None if args.no_gh else load_prs(args.pr_limit)
-    heads = None if args.offline else remote_heads(remote)
+    prs = load_prs()
+    heads = remote_heads(remote)
     merged_titles, raw_prs, merged_by_head = {}, {}, collections.defaultdict(list)
     for p in prs or []:
         raw_prs[p["number"]] = p
@@ -475,7 +402,7 @@ def main():
                 b["flags"].append(f"UNCOMMITTED WORK in its worktree ({w['modified']} modified, {w['untracked']} untracked)")
         if b["local_only"]:
             b["flags"].append(f"{b['local_only']} commit(s) on no remote")
-        classify(b, gold, devs, prs is not None, remote, not args.no_lines, raw_prs, merged_by_head)
+        classify(b, gold, devs, prs is not None, remote, raw_prs, merged_by_head)
         branches.append(b)
     proposed = {b["name"] for b in branches if b["category"] in ("in-main", "in-dev")}
     for b in branches:
@@ -555,21 +482,8 @@ def main():
             if k == "not-covered":
                 print(f"      own commits vs {gold.ref}: {b['own_commits_vs_gold']}; "
                       f"still on remote: {b['on_remote'] if b['on_remote'] is not None else 'unknown'}")
-                sizes = {r: e["lines"]["commits"] for r, e in b.get("content", {}).items() if e.get("lines")}
-                nearest = min(sizes, key=sizes.get) if sizes else None
                 for ref, e in b.get("content", {}).items():
-                    line = f"      vs {ref}: trial merge {e['trial_merge']}; equivalent patches {e['patch_equivalent']}"
-                    cov = e.get("lines")
-                    if cov and cov["added"]:
-                        line += (f"; added lines found {cov['anywhere']}/{cov['added']}"
-                                 f" ({cov['same_file']} in the same file)")
-                    print(line)
-                    # details only against the closest target: the others repeat inherited commits
-                    if cov and ref == nearest:
-                        if cov["absent_files"]:
-                            print(f"          files absent there: {', '.join(cov['absent_files'][:5])}")
-                        for path, s in cov["samples"][:2]:
-                            print(f"          missing e.g. [{path}] {s[:100]}")
+                    print(f"      vs {ref}: trial merge {e['trial_merge']}; equivalent patches {e['patch_equivalent']}")
 
     print(f"\n== WORKTREES ({len(trees)})")
     for w in trees:
