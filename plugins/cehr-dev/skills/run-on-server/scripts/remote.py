@@ -24,7 +24,7 @@ PACKAGES = {"cehrgpt": "cehrgpt", "cehrgpt-turbo": "cehrgpt_turbo"}
 READ_NAMES = ["*.log", "trainer_state.json", "metrics.json", "*_metrics.json", "all_results.json",
               "train_results.json", "eval_results.json"]
 PROBE = ('printf "home=%s\\n" "$HOME"; for d in ' + " ".join(PACKAGES) + '; do [ -d "$HOME/$d/.git" ] && '
-         'printf "repo=%s venv=%s\\n" "$d" "$([ -f "$HOME/$d/.venv/bin/activate" ] && echo yes || echo no)"; done')
+         'printf "repo=%s venv=%s\\n" "$d" "$(for v in .venv venv; do [ -f "$HOME/$d/$v/bin/activate" ] && echo $v && break; done)"; done')
 # never readable, whatever the list says
 DATA_SUFFIXES = (".parquet", ".arrow", ".feather", ".pkl", ".pickle", ".npy", ".npz", ".pt",
                  ".pth", ".bin", ".safetensors", ".h5", ".hdf5", ".db", ".sqlite", ".jsonl")
@@ -67,10 +67,11 @@ def proposal(host, read_roots):
         fail(f"cannot reach {host} or read its home folder: {out.strip()[:200]}")
     repos = {}
     for line in out.splitlines():
-        name = line.split()[0][5:] if line.startswith("repo=") else None
+        found = dict(word.split("=", 1) for word in line.split() if "=" in word)
+        name, venv = found.get("repo"), found.get("venv")
         if name in PACKAGES:
             repos[name] = {"path": f"{home}/{name}",
-                           "setup": "source .venv/bin/activate" if "venv=yes" in line else "true",
+                           "setup": f"source {venv}/bin/activate" if venv in (".venv", "venv") else "true",
                            "run": [f"python -m {PACKAGES[name]}.", f"python -u -m {PACKAGES[name]}.", "bash scripts/"]}
     if not repos:
         fail(f"none of {list(PACKAGES)} found in {home} on {host}; the user writes this entry by hand")
