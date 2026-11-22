@@ -1,8 +1,8 @@
 # CONVENTIONS.md template
 
 Copy this to `CONVENTIONS.md` at the root of a repository and fill it in. The
-`implement-feature` skill reads it before making changes; anything here overrides the
-skill's defaults. Keep it short: rules an agent can check, each tied to an example a
+`implement-feature` and `tester` skills read it first; anything here overrides
+their defaults. Keep it short: rules an agent can check, each tied to an example a
 reviewer can open.
 
 The best source for these rules is the repository's own history. Look at the last 30 or
@@ -32,7 +32,8 @@ Template to copy: <commit hash or PR that did it cleanly>
 - <what it does>: <function> in <file>
 
 ## Tests
-<When a test is wanted, what kind, and what never to test.>
+<When the author of a change should write a test, what kind, and what never to test.>
+<What an independent tester may add or remove.>
 <How to run the existing ones.>
 
 ## Comments
