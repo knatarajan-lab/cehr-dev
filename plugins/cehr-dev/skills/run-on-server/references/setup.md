@@ -1,0 +1,47 @@
+# Setting up run-on-server
+
+The user does this once. Copy `servers-template.json` to `~/.config/cehr-dev/servers.json`
+and fill it in. The file stays on your machine; it is not part of any repository.
+
+## The fields
+
+| Field | Meaning |
+|---|---|
+| `read_names` | File names that may be read, as patterns. Anything else is refused. |
+| server key | The ssh alias from `~/.ssh/config`. Only listed servers can be reached. |
+| `repo` | The repository folder on the server. Jobs start there; `git` runs there. |
+| `log_dir` | Where a started job writes `<name>.log`. Must be inside a `read_roots` folder. |
+| `read_roots` | Folders whose logs and metrics may be read. Absolute paths. |
+| `deny_parts` | Folder or file name patterns that are never entered, even inside `read_roots`. |
+| `run` | A job's command must start with one of these. |
+| `env` | Variables that `start --env` may set. |
+| `setup` | Run before every job, for example to activate the environment. |
+| `also_block` | Other names for the server (host name, address) that direct ssh may not use. |
+
+Data formats (parquet, arrow, pickle, numpy, model weights, jsonl) are never readable,
+whatever `read_names` says. A csv is readable only if you list a pattern for it; do not
+list one that could match per-patient output.
+
+## The audit file
+
+`~/.config/cehr-dev/audit.jsonl` gets one line for every ssh call the script makes
+(the exact remote command, then its exit code and how many characters came back), every
+request it refused with the reason, and every direct ssh or edit the hook blocked. Each
+line has the time and the folder the agent was working in. The output itself is not
+stored. The file is yours: the hook stops the agent from editing it, and nothing ever
+trims it.
+
+## What this does and does not guarantee
+
+- The script checks every command and path against this file, and follows symlinks
+  before reading.
+- The plugin's hook blocks direct `ssh`, `scp`, `sftp` and `rsync` to a listed server,
+  and blocks edits to this file. It takes effect once this file exists.
+- Both run on your machine and match text, so they stop mistakes, not a determined
+  bypass. Two stronger layers are yours to add:
+  - Permission rules in `~/.claude/settings.json`, which Claude Code enforces itself:
+    `"permissions": {"deny": ["Bash(ssh <alias>:*)", "Bash(scp:*)", "Bash(rsync:*)"]}`
+  - An account on the server that cannot read the patient data folders. This is the
+    only layer that holds whatever happens on your machine.
+- A job you allow can write anything to its log. Keep `run` to commands whose logs you
+  would be comfortable reading aloud.

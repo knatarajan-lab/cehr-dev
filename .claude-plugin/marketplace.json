@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "cehr-dev",
-      "description": "Skills for day-to-day development: a read-only audit of git branches and worktrees, feature implementation as a small reviewable diff, an independent tester that adds only the tests a change needs and removes duplicates, and a reviewer that checks a pull request against the same standards.",
+      "description": "Skills for day-to-day development: a read-only audit of git branches and worktrees, feature implementation as a small reviewable diff, an independent tester, a pull-request reviewer, and whitelisted commands on servers that hold sensitive data.",
       "source": "./plugins/cehr-dev",
       "category": "development"
     }
