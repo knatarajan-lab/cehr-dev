@@ -40,6 +40,12 @@ log or its `trainer_state.json`.
 `git checkout` change a shared machine. Run them only when the user asked for that
 action, and say the exact command first. The other actions only look and need no asking.
 
+**Take the command from the repository's list.** A repository has dozens of runnable
+modules with similar names, and the wrong one can run for hours before anyone notices.
+Before `start`, read the "Server jobs" section of the conventions file (`CONVENTIONS.md`,
+then `CLAUDE.md`) in the local checkout of that repository, and follow its notes. If the
+job is not listed there, or there is no such section, ask the user which command to run.
+
 **When something is refused, stop.** Do not look for another way in: no plain ssh, no
 copying files off the server, and no job whose purpose is to print data into a log.
 Tell the user what was refused and why, then ask them to run it themselves and paste the
