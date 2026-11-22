@@ -11,7 +11,7 @@ carries a set of skills for day-to-day development.
 | `implement-feature` | Implements a feature as the smallest diff a human can review, in four stages: confirms the requirement, reads the code, agrees a plan with you, and only then edits. Follows the repository's own patterns, keeps comments to a line or two, writes no tests by default, and stops to propose a split when the change gets large. Reads a `CONVENTIONS.md` in the repository if there is one. |
 | `tester` | Independent tester for a change someone else wrote. Runs the existing tests, adds a few targeted tests only where the change leaves new behaviour uncovered, and removes or merges duplicate tests in the files involved. Changes no source files. |
 | `reviewer` | Reviews a pull request, branch or diff against the standards the two skills above set: is it correct, is every line needed, does it follow the repository's patterns, and are its tests necessary and sufficient. Read-only; posts to the pull request only when asked. |
-| `run-on-server` | Runs whitelisted commands on your servers over ssh: machine status, starting and stopping jobs, syncing code, and reading training logs and metrics. It never reads patient-level data: a script checks every command and path against a list you write, and a hook blocks direct ssh to those servers. |
+| `run-on-server` | Runs whitelisted commands on your servers over ssh: machine status, starting and stopping jobs, syncing code, and reading training logs and metrics. It never reads patient-level data: a script checks every command and path against your list, a hook blocks all direct ssh by default, and every call is recorded in an audit file. |
 
 ## Install
 
@@ -85,11 +85,14 @@ never approves, requests changes or merges.
 /cehr-dev:run-on-server
 ```
 
-Before first use, write your server list: see
-`plugins/cehr-dev/skills/run-on-server/references/setup.md`. Until that file exists the
-skill refuses to run anything and the hook does nothing. Once it exists, direct `ssh`,
-`scp` and `rsync` to a listed server are blocked in every Claude Code session that has
-this plugin.
+On first use the agent offers to set up your server list: name an ssh alias and it
+proposes an entry that allows every cehrgpt and cehrgpt-turbo command on that server and
+the reading of its logs and metrics, then writes it when you agree. Anything beyond that
+default is your own edit; see `plugins/cehr-dev/skills/run-on-server/references/setup.md`.
+
+Direct `ssh`, `scp`, `sftp` and `rsync` to a host are blocked by default in every Claude
+Code session that has this plugin, before and after setup, so the skill's script is the
+only way to a server. To turn that off, create `~/.config/cehr-dev/declined` yourself.
 
 ## Requirements
 
@@ -117,6 +120,7 @@ plugins/
       implement-feature/
         SKILL.md
         references/conventions-template.md
+        references/data-changes.md
       tester/
         SKILL.md
       reviewer/
@@ -129,6 +133,7 @@ plugins/
     hooks/
       hooks.json
       guard_servers.py
+      offer_setup.py
 ```
 
 To add a skill, create `plugins/cehr-dev/skills/<name>/SKILL.md` and add a row to the

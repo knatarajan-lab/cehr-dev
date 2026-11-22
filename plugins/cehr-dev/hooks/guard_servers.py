@@ -1,66 +1,80 @@
 #!/usr/bin/env python3
-"""PreToolUse guard for the servers listed in ~/.config/cehr-dev/servers.json.
+"""PreToolUse guard: remote servers are reached only through the run-on-server script.
 
-Blocks a direct ssh, scp, sftp or rsync to a listed server, so the run-on-server script
-and its whitelist are the only way in, and blocks changes to the list and the audit file,
-which are the user's. Records what it blocks. Does nothing when the list does not exist.
+Blocks a shell command that runs ssh, scp, sftp, or rsync to a host, and any change to
+~/.config/cehr-dev, which is the user's. A command that only mentions ssh is left alone.
+It blocks by default; the user turns it off by creating ~/.config/cehr-dev/declined
+while no server is listed.
 """
 import datetime
 import json
 import os
 import re
+import shlex
 import sys
 
 FOLDER = os.path.expanduser("~/.config/cehr-dev")
-CONFIG = os.path.join(FOLDER, "servers.json")
-REMOTE = re.compile(r"(^|[\s;&|(`'\"/=])(ssh|scp|sftp|rsync|mosh|autossh|sshpass)(?=\s|$)")
+REMOTE = {"ssh", "scp", "sftp", "mosh", "autossh", "sshpass"}
+WRAPPERS = {"sudo", "command", "exec", "time", "nohup", "env", "xargs", "timeout", "watch",
+            "bash", "sh", "zsh", "eval"}
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+OWN_PATH = re.compile(r"^(~|/|\$HOME|\$\{HOME\}).*\.config/cehr-dev")
 
 
-def block(message, attempted):
+def blocked(line):
+    """Whether a shell line runs a remote program or touches the user's folder. Best effort."""
+    for part in line.splitlines():
+        lexer = shlex.shlex(part, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        try:
+            tokens = list(lexer)
+        except ValueError:  # unbalanced quotes
+            tokens = part.split()
+        at_program = True  # the next word names the program that runs
+        rsync = False
+        for token in tokens:
+            if set(token) <= set(";&|()"):
+                at_program = True
+                continue
+            name = os.path.basename(token)
+            if OWN_PATH.match(token) or any(blocked(inner) for inner in re.split(r"\$\(|`", token)[1:]):
+                return True
+            if not at_program:
+                if rsync and re.match(r"^[\w.@-]+:", token):  # host:path
+                    return True
+                continue
+            if name in REMOTE or (" " in token and blocked(token)):  # the second: bash -c '...'
+                return True
+            # options, numbers, VAR=value and wrappers such as sudo come before the program
+            at_program = token.startswith("-") or token.isdigit() or bool(ASSIGNMENT.match(token)) or name in WRAPPERS
+            rsync = name == "rsync"
+    return False
+
+
+def main():
+    if not os.path.exists(os.path.join(FOLDER, "servers.json")) and os.path.exists(os.path.join(FOLDER, "declined")):
+        return
+    try:
+        tool_input = json.load(sys.stdin).get("tool_input") or {}
+    except ValueError:
+        return
+    path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
+    command = str(tool_input.get("command") or "")
+    edits_folder = path and os.path.realpath(os.path.expanduser(path)).startswith(os.path.realpath(FOLDER) + os.sep)
+    if not edits_folder and not blocked(command):
+        return
     entry = {"time": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
-             "cwd": os.getcwd(), "outcome": "blocked by hook", "attempted": attempted[:500]}
+             "cwd": os.getcwd(), "outcome": "blocked by hook", "attempted": (command or f"edit {path}")[:500]}
     try:
         with open(os.path.join(FOLDER, "audit.jsonl"), "a") as f:
             f.write(json.dumps(entry) + "\n")
     except OSError:
         pass
-    print(message, file=sys.stderr)
+    print("Blocked: a server may hold patient data, so direct ssh is not allowed, and ~/.config/cehr-dev "
+          "is the user's to edit. Use the run-on-server skill's remote.py; for a server that is not listed, "
+          "offer the user `remote.py propose <server>`. If it cannot do what is needed, ask the user to "
+          "run it themselves.", file=sys.stderr)
     sys.exit(2)
-
-
-def main():
-    if not os.path.exists(CONFIG):
-        return
-    try:
-        event = json.load(sys.stdin)
-    except ValueError:
-        return
-    tool_input = event.get("tool_input") or {}
-    path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
-    if path and os.path.realpath(os.path.expanduser(path)).startswith(os.path.realpath(FOLDER) + os.sep):
-        block("The server list and the audit file belong to the user. Ask the user to change "
-              "them; do not edit them.", f"edit {path}")
-    command = str(tool_input.get("command") or "")
-    if not command:
-        return
-    if ".config/cehr-dev" in command:
-        block("Do not touch the server list or the audit file from the shell. `remote.py rules "
-              "<server>` and `remote.py audit` show them; the user edits them.", command)
-    if not REMOTE.search(command):
-        return
-    try:
-        with open(CONFIG) as f:
-            servers = json.load(f)["servers"]
-        names = set(servers)
-        for server in servers.values():
-            names.update(server.get("also_block", []))
-    except (OSError, ValueError, KeyError, AttributeError, TypeError):
-        block("servers.json cannot be read, so direct ssh is blocked. Ask the user to fix the file.", command)
-    for name in names:
-        if re.search(r"(?<![\w.-])" + re.escape(name) + r"(?![\w-])", command):
-            block(f"Direct ssh to '{name}' is blocked: the server holds patient data. Use the "
-                  "run-on-server skill's remote.py, which runs only whitelisted commands and reads "
-                  "only logs and metrics. If it cannot do what is needed, ask the user to run it.", command)
 
 
 if __name__ == "__main__":

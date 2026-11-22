@@ -11,8 +11,8 @@ sample. A listed script may compute on it and write summary metrics, and those y
 read.
 
 This text is not what enforces that. `scripts/remote.py` refuses anything outside the
-user's list, a hook blocks direct ssh to a listed server, and a job's output goes to a
-log file on the server instead of coming back to you.
+user's list, a hook blocks every direct ssh, and a job's output goes to a log file on
+the server instead of coming back to you. Nothing is allowed until a server is listed.
 
 ## The commands
 
@@ -22,22 +22,17 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/run-on-server/scripts/remote.py <action> <s
 
 | Action | What it does |
 |---|---|
-| `rules <server>` | Show what may be run and read on that server |
 | `status <server>` | GPUs, memory, disk, load and the largest processes |
 | `jobs <server>` | The tmux sessions |
 | `start <server> <name> [--repo NAME] [--env KEY=VALUE] -- <command>` | Start a listed command in tmux session `cc-<name>`; its output goes to `<log_dir>/<name>.log` |
 | `stop <server> <name>` | Stop `cc-<name>` |
-| `git <server> status\|fetch\|pull\|log` and `git <server> checkout <branch>` | In a repository folder on the server |
-| `ls <server> <folder>` | File names in a readable folder |
+| `git <server> status\|fetch\|pull` and `git <server> checkout <branch>` | In a repository folder on the server |
 | `tail <server> <path> [-n N]` | The last lines, 300 at most, of a log or metrics file |
-| `grep <server> <text> <path>` | Fixed-text search in one such file |
-| `audit [-n N]` | The last lines of the audit file |
+| `propose <server>`, `accept <server>` | Show, then write, the default entry for a server that is not listed; `--read-root <folder>` adds a folder of logs and metrics |
 
-Start with `rules` when you do not know what is listed. Add `--dry-run` before the
-action to see the ssh command without running it. A server can list several
-repositories, each with its own commands; name one with `--repo` on `start` and `git`.
-
-To follow a run, `tail` its log, or `grep eval_loss` in its `trainer_state.json`.
+A refusal says what is listed. A server can list several repositories, each with its
+own commands; name one with `--repo` on `start` and `git`. To follow a run, `tail` its
+log or its `trainer_state.json`.
 
 ## Rules
 
@@ -50,9 +45,12 @@ copying files off the server, and no job whose purpose is to print data into a l
 Tell the user what was refused and why, then ask them to run it themselves and paste the
 result, or to add it to their list.
 
-**The list is the user's.** They write and edit `~/.config/cehr-dev/servers.json`. You
-do not create it, change it, or suggest wider rules to get a task done. If it does not
-exist, point the user to `references/setup.md`.
+**The list is the user's.** `~/.config/cehr-dev/servers.json` says what may run and be
+read. For a server that is not listed, offer the default: `propose <server>` shows an
+entry that allows every cehrgpt and cehrgpt-turbo command there, and `accept <server>`
+writes it. Show the user the proposal and run `accept` only after they say yes. You
+never write or change the file any other way, and anything beyond the default is the
+user's own edit (`references/setup.md`).
 
 **Everything is recorded.** Each ssh call, refusal and blocked attempt is appended to
 the user's audit file, `~/.config/cehr-dev/audit.jsonl`. Do not edit or remove it.
