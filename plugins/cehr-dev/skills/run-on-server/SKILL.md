@@ -25,16 +25,17 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/run-on-server/scripts/remote.py <action> <s
 | `rules <server>` | Show what may be run and read on that server |
 | `status <server>` | GPUs, memory, disk, load and the largest processes |
 | `jobs <server>` | The tmux sessions |
-| `start <server> <name> [--env KEY=VALUE] -- <command>` | Start a listed command in tmux session `cc-<name>`; its output goes to `<log_dir>/<name>.log` |
+| `start <server> <name> [--repo NAME] [--env KEY=VALUE] -- <command>` | Start a listed command in tmux session `cc-<name>`; its output goes to `<log_dir>/<name>.log` |
 | `stop <server> <name>` | Stop `cc-<name>` |
-| `git <server> status\|fetch\|pull\|log` and `git <server> checkout <branch>` | In the repository folder on the server |
+| `git <server> status\|fetch\|pull\|log` and `git <server> checkout <branch>` | In a repository folder on the server |
 | `ls <server> <folder>` | File names in a readable folder |
 | `tail <server> <path> [-n N]` | The last lines, 300 at most, of a log or metrics file |
 | `grep <server> <text> <path>` | Fixed-text search in one such file |
 | `audit [-n N]` | The last lines of the audit file |
 
 Start with `rules` when you do not know what is listed. Add `--dry-run` before the
-action to see the ssh command without running it.
+action to see the ssh command without running it. A server can list several
+repositories, each with its own commands; name one with `--repo` on `start` and `git`.
 
 To follow a run, `tail` its log, or `grep eval_loss` in its `trainer_state.json`.
 

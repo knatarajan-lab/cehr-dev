@@ -9,13 +9,14 @@ and fill it in. The file stays on your machine; it is not part of any repository
 |---|---|
 | `read_names` | File names that may be read, as patterns. Anything else is refused. |
 | server key | The ssh alias from `~/.ssh/config`. Only listed servers can be reached. |
-| `repo` | The repository folder on the server. Jobs start there; `git` runs there. |
+| `repos` | The repositories on the server, each under a name you choose. Add one entry per repository. With more than one, `start` and `git` take `--repo <name>`. |
+| `path` | The repository folder. Its jobs start there; `git` runs there. |
+| `setup` | Run before every job of that repository, for example to activate its environment. |
+| `run` | A job's command in that repository must start with one of these. |
 | `log_dir` | Where a started job writes `<name>.log`. Must be inside a `read_roots` folder. |
 | `read_roots` | Folders whose logs and metrics may be read. Absolute paths. |
 | `deny_parts` | Names of folders that hold nothing but data and are never entered for reading. Keep it short: a results folder that also holds a metrics file should stay readable, since data files in it are refused by type anyway. It does not limit which folders a job may work on. |
-| `run` | A job's command must start with one of these. |
 | `env` | Variables that `start --env` may set. |
-| `setup` | Run before every job, for example to activate the environment. |
 | `also_block` | Other names for the server (host name, address) that direct ssh may not use. |
 
 Data formats (parquet, arrow, pickle, numpy, model weights, jsonl) are never readable,

@@ -105,11 +105,21 @@ def readable(cfg, server, host, path, is_file, dry_run):
     return check_path(cfg, server, real.strip(), is_file)
 
 
-def job_command(server, env, words):
+def repository(server, name):
+    """The repository a job or git command works in; a server may list several."""
+    repos = server.get("repos", {})
+    if name is None and len(repos) == 1:
+        name = next(iter(repos))
+    if name not in repos:
+        fail(f"choose a listed repository with --repo: {', '.join(repos) or 'none listed'}")
+    return repos[name]
+
+
+def job_command(server, repo, env, words):
     """The shell line of a job: only listed commands, plain arguments, listed variables."""
     line = " ".join(words)
-    if not any(line.startswith(prefix) for prefix in server.get("run", [])):
-        fail(f"'{line}' does not start with a listed command: {server.get('run', [])}")
+    if not any(line.startswith(prefix) for prefix in repo.get("run", [])):
+        fail(f"'{line}' does not start with a listed command: {repo.get('run', [])}")
     for word in words:
         if not SAFE_ARG.match(word) or ".." in word:
             fail(f"argument '{word}' is not allowed (quotes, spaces, shell syntax, or '..')")
@@ -133,6 +143,7 @@ def main():
     p.add_argument("server")
     p.add_argument("name")
     p.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
+    p.add_argument("--repo")
     p.add_argument("command", nargs=argparse.REMAINDER, help="after --")
     p = sub.add_parser("stop")
     p.add_argument("server")
@@ -141,6 +152,7 @@ def main():
     p.add_argument("server")
     p.add_argument("what", choices=["status", "fetch", "pull", "log", "checkout"])
     p.add_argument("branch", nargs="?")
+    p.add_argument("--repo")
     p = sub.add_parser("ls")
     p.add_argument("server")
     p.add_argument("folder")
@@ -172,25 +184,29 @@ def main():
         if not NAME.match(args.name):
             fail("job name: letters, digits, _ and - only")
         words = list(args.command)  # argparse may or may not keep the "--"
-        while words[:1] == ["--env"] and len(words) > 1:
-            args.env.append(words[1])
+        while words[:1] in (["--env"], ["--repo"]) and len(words) > 1:
+            if words[0] == "--env":
+                args.env.append(words[1])
+            else:
+                args.repo = words[1]
             words = words[2:]
         if words[:1] == ["--"]:
             words = words[1:]
         if not words or words[0].startswith("-"):
-            fail("usage: start <server> <name> [--env KEY=VALUE ...] -- <command>")
+            fail("usage: start <server> <name> [--repo NAME] [--env KEY=VALUE ...] -- <command>")
+        repo = repository(server, args.repo)
         log = posixpath.join(server["log_dir"], f"{args.name}.log")
         check_path(cfg, server, log, is_file=True)
-        inner = f"{server.get('setup', 'true')}; {job_command(server, args.env, words)} > {shlex.quote(log)} 2>&1; echo exit=$? >> {shlex.quote(log)}"
+        inner = f"{repo.get('setup', 'true')}; {job_command(server, repo, args.env, words)} > {shlex.quote(log)} 2>&1; echo exit=$? >> {shlex.quote(log)}"
         remote = (f"[ ! -e {shlex.quote(log)} ] || {{ echo 'log exists, pick another name'; exit 3; }}; "
-                  f"mkdir -p {shlex.quote(server['log_dir'])} && cd {shlex.quote(server['repo'])} && "
+                  f"mkdir -p {shlex.quote(server['log_dir'])} && cd {shlex.quote(repo['path'])} && "
                   f"tmux new-session -d -s cc-{args.name} {shlex.quote(inner)} && echo started cc-{args.name}, log {shlex.quote(log)}")
     elif args.action == "stop":
         if not NAME.match(args.name):
             fail("job name: letters, digits, _ and - only")
         remote = f"tmux kill-session -t cc-{args.name} && echo stopped cc-{args.name}"
     elif args.action == "git":
-        git = f"git -C {shlex.quote(server['repo'])} "
+        git = f"git -C {shlex.quote(repository(server, args.repo)['path'])} "
         if args.what == "checkout":
             if not args.branch or not BRANCH.match(args.branch) or args.branch.startswith("-"):
                 fail("checkout needs a plain branch name")
