@@ -46,6 +46,11 @@ Pick one per change and say which. Mixing them makes the diff unreadable.
 - **No monolithic functions.** Split a long function at its seams, as implement-feature
   describes. A merge must not create one either: if joining two functions needs several
   flags to switch between behaviours, give them a shared helper and keep them apart.
+- **Imports that flow one way.** A lower-level module does not import a higher-level
+  one, and a refactor adds no import cycle. Put a shared helper in the lowest module
+  that both callers can already import. Remove a cycle inside the boundary when moving a
+  function is enough, and do not hide one with an import inside a function. Drop imports
+  the change leaves unused.
 - **Short comments.** One or two lines saying why, or none. A refactor does not narrate
   what moved or what the code used to be.
 
@@ -62,6 +67,8 @@ Confirm the base branch unless the user already said.
 - **Everything that uses what will change.** `git grep` each name, and look beyond
   calls: names inside strings, `getattr`, config keys, command-line options, and tests
   that patch or mock them. For a pattern, list every occurrence and the variants.
+- **Which way the imports run.** For the modules in scope, list what each imports from
+  the rest of the package and what imports it, and note every cycle.
 - **What must stay as it is from outside**: command-line options, config and checkpoint
   keys, file names and formats, log lines something parses, the hash that identifies
   stored data.
@@ -78,6 +85,7 @@ Give the user a plan they can read in a minute:
   before and after
 - the rough size of each step. Over the size budget, propose separate pull requests that
   each stand on their own, for example the pure moves first, then the merges
+- the imports between modules that will be added or removed, and any cycle that goes
 - what you are leaving alone, and anything that cannot be verified
 
 **Ask for a test dataset when tests are not enough.** For data loading, tokenization or
@@ -119,6 +127,7 @@ Do not commit or push unless the user asked.
 - the problem, the kind of refactor, and the steps done against the plan
 - lines added and removed per step, and the net change
 - functions merged or split, with their length before and after
+- imports between modules added and removed, and the cycles before and after
 - the evidence: tests run, and which outputs were compared and whether they are identical
 - what could not be verified
 - "noticed, not changed": bugs and other problems you saw and left alone

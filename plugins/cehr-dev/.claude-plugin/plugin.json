@@ -1,7 +1,7 @@
 {
   "name": "cehr-dev",
   "description": "Skills for day-to-day development: a read-only audit of git branches and worktrees, feature implementation and refactoring as small reviewable diffs, an independent tester, a pull-request reviewer, and whitelisted commands on servers that hold sensitive data.",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "author": {
     "name": "Chao Pang"
   },
