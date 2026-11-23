@@ -54,6 +54,9 @@ def blocked(line):
 def main():
     if not os.path.exists(os.path.join(FOLDER, "servers.json")) and os.path.exists(os.path.join(FOLDER, "declined")):
         return
+    # stdin from Claude Code: {"session_id", "transcript_path", "cwd", "hook_event_name": "PreToolUse",
+    #   "tool_name", "tool_input"}; tool_input is the tool call's own arguments, e.g. Bash
+    #   {"command", "description"}, Edit/Write/MultiEdit {"file_path", ...}, NotebookEdit {"notebook_path", ...}
     try:
         tool_input = json.load(sys.stdin).get("tool_input") or {}
     except ValueError:
