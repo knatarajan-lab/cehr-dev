@@ -28,6 +28,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/run-on-server/scripts/remote.py <action> <s
 | `stop <server> <name>` | Stop `cc-<name>` |
 | `git <server> status\|fetch\|pull` and `git <server> checkout <branch>` | In a repository folder on the server |
 | `tail <server> <path> [-n N]` | The last lines, 300 at most, of a log or metrics file |
+| `du <server> <folder>` | The total size of each `*features_with_label` and `*dataset_prepared*` folder at, or up to four levels under, a folder |
 | `propose <server>`, `accept <server>` | Show, then write, the default entry for a server that is not listed; `--read-root <folder>` adds a folder of logs and metrics |
 
 A refusal says what is listed. A server can list several repositories, each with its

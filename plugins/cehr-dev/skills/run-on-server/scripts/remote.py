@@ -3,7 +3,8 @@
 
 The only way the plugin reaches a server. A job's output goes to a log file on the server
 and is never returned, and a file is read only when its folder and its name are both
-listed in ~/.config/cehr-dev/servers.json. Every ssh call and every refusal is appended
+listed in ~/.config/cehr-dev/servers.json. `du` gives only the total size of a listed
+folder. Every ssh call and every refusal is appended
 to ~/.config/cehr-dev/audit.jsonl. Python 3.8+, standard library only.
 """
 import argparse
@@ -23,6 +24,8 @@ CONFIG, AUDIT = os.path.join(FOLDER, "servers.json"), os.path.join(FOLDER, "audi
 PACKAGES = {"cehrgpt": "cehrgpt", "cehrgpt-turbo": "cehrgpt_turbo"}
 READ_NAMES = ["*.log", "trainer_state.json", "metrics.json", "*_metrics.json", "all_results.json",
               "train_results.json", "eval_results.json"]
+# folders whose total size `du` may report; a `size_names` list in the user's file replaces it
+SIZE_NAMES = ["*features_with_label", "*dataset_prepared*"]
 PROBE = ('printf "home=%s\\n" "$HOME"; for d in ' + " ".join(PACKAGES) + '; do [ -d "$HOME/$d/.git" ] && '
          'printf "repo=%s venv=%s\\n" "$d" "$(for v in .venv venv; do [ -f "$HOME/$d/$v/bin/activate" ] && echo $v && break; done)"; done')
 # never readable, whatever the list says
@@ -125,7 +128,7 @@ def job_command(server, repo, env, words):
 def parse_args():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="action", required=True)
-    p = {name: sub.add_parser(name) for name in ("status", "jobs", "start", "stop", "git", "tail", "propose", "accept")}
+    p = {name: sub.add_parser(name) for name in ("status", "jobs", "start", "stop", "git", "tail", "du", "propose", "accept")}
     for parser in p.values():
         parser.add_argument("server")
     for name in ("start", "stop"):
@@ -136,7 +139,8 @@ def parse_args():
     p["start"].add_argument("command", nargs="+", help="after --")
     p["git"].add_argument("what", choices=[*GIT, "checkout"])
     p["git"].add_argument("branch", nargs="?")
-    p["tail"].add_argument("path")
+    for name in ("tail", "du"):
+        p[name].add_argument("path")
     p["tail"].add_argument("-n", type=int, default=50)
     for name in ("propose", "accept"):
         p[name].add_argument("--read-root", action="append", default=[], help="another folder of logs and metrics")
@@ -176,7 +180,13 @@ def remote_command(args, cfg, server, host):
             fail("checkout needs a plain branch name")
         return f"git -C {quote(repository(server, args.repo)['path'])} " + (
             f"checkout {quote(args.branch)}" if args.what == "checkout" else GIT[args.what])
-    rc, real = ssh(host, f"realpath -e -- {quote(check_path(cfg, server, args.path))}")
+    if args.action == "du":
+        if not (args.path.startswith("/") and SAFE_ARG.match(args.path)) or ".." in args.path:
+            fail("du takes a plain absolute folder")
+        names = " -o ".join(f"-name {quote(n)}" for n in cfg.get("size_names", SIZE_NAMES))
+        # one total per listed folder: no file is opened and no file name comes back
+        return f"find -H {quote(args.path)} -maxdepth 4 -type d \\( {names} \\) -prune -exec du -sh {{}} +"
+    rc, real = ssh(host, f"realpath -e --{quote(check_path(cfg, server, args.path))}")
     if rc:
         fail(f"{args.path} does not exist on {host}")
     # checked again where it really points: a symlink must not lead to data

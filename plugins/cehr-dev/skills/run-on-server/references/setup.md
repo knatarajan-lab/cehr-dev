@@ -29,6 +29,7 @@ With that file and no server list, the hook stands down and direct ssh works as 
 | Field | Meaning |
 |---|---|
 | `read_names` | File names that may be read, as patterns. Anything else is refused. |
+| `size_names` | Optional. Names of folders whose total size `du` may report, as patterns. Left out, it is `*features_with_label` and `*dataset_prepared*`. Only totals come back, never file names. |
 | server key | The ssh alias from `~/.ssh/config`. Only listed servers can be reached. |
 | `repos` | The repositories on the server, each under a name you choose. Add one entry per repository. With more than one, `start` and `git` take `--repo <name>`. |
 | `path` | The repository folder. Its jobs start there; `git` runs there. |
