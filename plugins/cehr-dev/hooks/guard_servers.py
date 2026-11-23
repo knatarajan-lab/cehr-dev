@@ -64,6 +64,7 @@ def main():
     path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
     command = str(tool_input.get("command") or "")
     edits_folder = path and os.path.realpath(os.path.expanduser(path)).startswith(os.path.realpath(FOLDER) + os.sep)
+    # blocked(): ssh-like programs, rsync to host:path, and any absolute path into ~/.config/cehr-dev
     if not edits_folder and not blocked(command):
         return
     entry = {"time": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
