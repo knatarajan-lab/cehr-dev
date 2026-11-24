@@ -194,7 +194,7 @@ def remote_command(args, cfg, server, host):
         names = " -o ".join(f"-name {quote(n)}" for n in cfg.get("size_names", SIZE_NAMES))
         # one total per listed folder: no file is opened and no file name comes back
         return f"find -H {quote(args.path)} -maxdepth 4 -type d \\( {names} \\) -prune -exec du -sh {{}} +"
-    rc, real = ssh(host, f"realpath -e --{quote(check_path(cfg, server, args.path))}")
+    rc, real = ssh(host, f"realpath -e -- {quote(check_path(cfg, server, args.path))}")
     if rc:
         fail(f"{args.path} does not exist on {host}")
     # checked again where it really points: a symlink must not lead to data
