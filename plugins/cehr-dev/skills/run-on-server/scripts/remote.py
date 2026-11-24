@@ -36,6 +36,8 @@ BRANCH = re.compile(r"^[A-Za-z0-9._/][A-Za-z0-9._/-]{0,99}$")
 SAFE_ARG = re.compile(r"^[A-Za-z0-9_./:,=@%+-]+$")
 STATUS = ("nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total --format=csv; "
           "free -g; df -h; uptime; ps -eo user,pid,etime,pcpu,rss,args --sort=-rss | head -25 | cut -c1-200")
+# torchrun options that may come before a listed `-m` module
+TORCHRUN = ["nproc_per_node", "nnodes", "master_port", "standalone"]
 GIT = {"status": "status --short --branch", "fetch": "fetch", "pull": "pull --ff-only"}
 
 
@@ -113,9 +115,15 @@ def repository(server, name):
 
 def job_command(server, repo, env, words):
     """The shell line of a job: only listed commands, plain arguments, listed variables."""
-    line = " ".join(words)
-    if not any(line.startswith(prefix) for prefix in repo.get("run", [])):
-        fail(f"'{line}' does not start with a listed command: {repo.get('run', [])}")
+    line = module = " ".join(words)
+    if words[0] == "torchrun":  # torchrun [listed --options] -m <module>: checked as `python -m <module>`
+        rest = words[1:]
+        while rest and rest[0].startswith("--") and rest[0][2:].split("=")[0].replace("-", "_") in TORCHRUN:
+            rest = rest[1:]
+        module = " ".join(["python", *rest])
+    if not any(module.startswith(prefix) for prefix in repo.get("run", [])):
+        fail(f"'{line}' does not start with a listed command: {repo.get('run', [])}"
+             + (f"; before -m, torchrun takes only --{', --'.join(TORCHRUN)}" if words[0] == "torchrun" else ""))
     for word in words:
         if not SAFE_ARG.match(word) or ".." in word:
             fail(f"argument '{word}' is not allowed (quotes, spaces, shell syntax, or '..')")

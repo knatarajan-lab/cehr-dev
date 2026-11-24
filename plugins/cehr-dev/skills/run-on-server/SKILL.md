@@ -31,7 +31,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/run-on-server/scripts/remote.py <action> <s
 | `du <server> <folder>` | The total size of each `*features_with_label` and `*dataset_prepared*` folder at, or up to four levels under, a folder |
 | `propose <server>`, `accept <server>` | Show, then write, the default entry for a server that is not listed; `--read-root <folder>` adds a folder of logs and metrics |
 
-A refusal says what is listed. A server can list several repositories, each with its
+A listed `python -m` command may also start through `torchrun`, as in `torchrun
+--nproc_per_node=2 -m cehrgpt.runners.hf_cehrgpt_pretrain_runner`; only
+`--nproc_per_node`, `--nnodes`, `--master_port` and `--standalone` may come before `-m`,
+written with `=`. A refusal says what is listed. A server can list several repositories, each with its
 own commands; name one with `--repo` on `start` and `git`. To follow a run, `tail` its
 log or its `trainer_state.json`.
 
